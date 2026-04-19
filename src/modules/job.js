@@ -6,6 +6,7 @@ import { User } from '../models/User.js';
 import { auth, authorize } from '../middlewares/auth.js';
 import { ActivityLog } from '../models/ActivityLog.js';
 import { validate, schemas } from '../middlewares/validation.js';
+import { getSocketManager } from '../utils/socket.js';
 
 const router = Router();
 
@@ -110,6 +111,24 @@ router.post('/', auth, authorize('ADMIN', 'CLIENT'), validate(schemas.createJob)
       entityId: job._id,
       details: { title: job.title, clientId }
     });
+
+    const socketManager = getSocketManager();
+    if (socketManager) {
+      const eventData = {
+        type: 'JOB_CREATED',
+        jobId: job._id,
+        title: job.title,
+        description: job.description,
+        startDate: job.startDate,
+        endDate: job.endDate,
+        status: job.status,
+        timestamp: new Date().toISOString()
+      };
+
+      socketManager.emitToRole('ADMIN', 'job:created', eventData);
+      socketManager.emitToRole('SUPER_ADMIN', 'job:created', eventData);
+      socketManager.emitToRole('WORKER', 'job:created', eventData);
+    }
 
     res.status(201).json({
       success: true,
@@ -305,6 +324,21 @@ router.put('/:id', auth, authorize('ADMIN', 'CLIENT'), async (req, res, next) =>
       entityId: req.params.id,
       details: updates
     });
+
+    const socketManager = getSocketManager();
+    if (socketManager) {
+      const eventData = {
+        type: 'JOB_UPDATED',
+        jobId: req.params.id,
+        updates,
+        timestamp: new Date().toISOString()
+      };
+
+      socketManager.emitToRole('ADMIN', 'job:updated', eventData);
+      socketManager.emitToRole('SUPER_ADMIN', 'job:updated', eventData);
+      socketManager.emitToRole('CLIENT', 'job:updated', eventData);
+      socketManager.emitToRole('WORKER', 'job:updated', eventData);
+    }
 
     res.json({ success: true, data: updatedJob });
   } catch (error) {

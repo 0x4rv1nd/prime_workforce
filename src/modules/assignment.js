@@ -6,6 +6,7 @@ import { Availability } from '../models/Availability.js';
 import { auth, authorize } from '../middlewares/auth.js';
 import { ActivityLog } from '../models/ActivityLog.js';
 import { validate, schemas } from '../middlewares/validation.js';
+import { getSocketManager } from '../utils/socket.js';
 
 const router = Router();
 
@@ -116,6 +117,30 @@ router.post('/', auth, authorize('ADMIN', 'SUPER_ADMIN'), validate(schemas.assig
       entityId: jobId,
       details: { assignedCount: newAssignments.length, workerIds: validWorkers.map(w => w._id) }
     });
+
+    const socketManager = getSocketManager();
+    if (socketManager) {
+      const eventData = {
+        type: 'ASSIGNMENT_CREATED',
+        jobId,
+        jobTitle: job.title,
+        clientName: job.clientId?.name,
+        timestamp: new Date().toISOString()
+      };
+
+      socketManager.emitToRole('ADMIN', 'assignment:created', eventData);
+      socketManager.emitToRole('SUPER_ADMIN', 'assignment:created', eventData);
+
+      for (const worker of availableWorkers) {
+        await socketManager.sendNotification(
+          worker._id,
+          'New Assignment',
+          `You have been assigned to ${job.title}`,
+          'ASSIGNMENT',
+          eventData
+        );
+      }
+    }
 
     res.status(201).json({
       success: true,
@@ -308,6 +333,26 @@ router.put('/:id', auth, authorize('ADMIN', 'SUPER_ADMIN'), async (req, res, nex
       entityId: assignment._id,
       details: { status }
     });
+
+    const socketManager = getSocketManager();
+    if (socketManager) {
+      const updatedAssignment = await Assignment.findById(req.params.id).populate('userId', 'name');
+      const updatedJob = await Job.findById(updatedAssignment.jobId);
+      
+      const eventData = {
+        type: 'ASSIGNMENT_UPDATED',
+        assignmentId: assignment._id,
+        jobId: updatedAssignment.jobId,
+        jobTitle: updatedJob?.title,
+        status,
+        workerName: updatedAssignment.userId?.name,
+        timestamp: new Date().toISOString()
+      };
+
+      socketManager.emitToRole('ADMIN', 'assignment:updated', eventData);
+      socketManager.emitToRole('SUPER_ADMIN', 'assignment:updated', eventData);
+      socketManager.emitToUser(updatedAssignment.userId._id, 'assignment:updated', eventData);
+    }
 
     res.json({ success: true, data: assignment });
   } catch (error) {

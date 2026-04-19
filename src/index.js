@@ -1,15 +1,18 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import { createServer } from 'http';
 import connectDB from './config/database.js';
 import swaggerUi from 'swagger-ui-express';
 import swaggerJsDoc from 'swagger-jsdoc';
 import { securityMiddleware, authLimiter, generalLimiter } from './middlewares/security.js';
 import apiRoutes from './modules/v1.js';
+import { initializeSocket } from './utils/socket.js';
 
 dotenv.config();
 
 const app = express();
+const httpServer = createServer(app);
 
 app.use(securityMiddleware);
 app.use(cors());
@@ -27,6 +30,8 @@ app.use('/auth', authLimiter);
 app.use(generalLimiter);
 
 app.use('/api/v1', apiRoutes);
+
+const socketManager = initializeSocket(httpServer);
 
 const swaggerOptions = {
   definition: {
@@ -94,10 +99,11 @@ const PORT = process.env.PORT || 5000;
 
 const startServer = async () => {
   await connectDB();
-  app.listen(PORT, () => {
+  httpServer.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
     console.log(`API Base: http://localhost:${PORT}/api/v1`);
     console.log(`Swagger docs: http://localhost:${PORT}/api-docs`);
+    console.log(`Socket.IO: ws://localhost:${PORT}`);
   });
 };
 

@@ -2,9 +2,12 @@ import { Router } from 'express';
 import { Attendance } from '../models/Attendance.js';
 import { Assignment } from '../models/Assignment.js';
 import { Job } from '../models/Job.js';
+import { User } from '../models/User.js';
 import { auth } from '../middlewares/auth.js';
 import { ActivityLog } from '../models/ActivityLog.js';
 import { validate, schemas } from '../middlewares/validation.js';
+import { getSocketManager } from '../utils/socket.js';
+import { Notification } from '../models/Notification.js';
 
 const router = Router();
 
@@ -159,10 +162,6 @@ router.post('/check-in', auth, validate(schemas.checkIn), async (req, res, next)
       });
     }
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    today.setDate(today.getDate());
-
     const existingAttendance = await Attendance.findOne({
       userId,
       jobId,
@@ -213,6 +212,48 @@ router.post('/check-in', auth, validate(schemas.checkIn), async (req, res, next)
       entityId: attendance._id,
       details: { jobId, location }
     });
+
+    const socketManager = getSocketManager();
+    if (socketManager) {
+      const eventData = {
+        type: 'CHECK_IN',
+        userId: req.user._id,
+        userName: req.user.name,
+        jobId,
+        jobTitle: job.title,
+        time: attendance.checkIn.time,
+        timestamp: new Date().toISOString()
+      };
+
+      socketManager.emitToRole('ADMIN', 'worker:check-in', eventData);
+      socketManager.emitToRole('SUPER_ADMIN', 'worker:check-in', eventData);
+      socketManager.emitToRole('CLIENT', 'worker:check-in', eventData);
+
+      const clientUsers = await User.find({ role: 'CLIENT', isApproved: true });
+      for (const client of clientUsers) {
+        const jobClientId = job.clientId?.toString();
+        if (jobClientId && client._id.toString() === jobClientId) {
+          await socketManager.sendNotification(
+            client._id,
+            'Worker Checked In',
+            `${req.user.name} checked in to ${job.title}`,
+            'CHECK_IN',
+            eventData
+          );
+        }
+      }
+
+      const adminUsers = await User.find({ role: { $in: ['ADMIN', 'SUPER_ADMIN'] }, isApproved: true });
+      for (const admin of adminUsers) {
+        await socketManager.sendNotification(
+          admin._id,
+          'Worker Checked In',
+          `${req.user.name} checked in to ${job.title}`,
+          'CHECK_IN',
+          eventData
+        );
+      }
+    }
 
     res.status(201).json({
       success: true,
@@ -321,6 +362,22 @@ router.post('/check-out', auth, validate(schemas.checkOut), async (req, res, nex
       entityId: attendance._id,
       details: { jobId, totalHours, withinGeofence }
     });
+
+    const socketManager = getSocketManager();
+    if (socketManager) {
+      const eventData = {
+        type: 'CHECK_OUT',
+        userId: req.user._id,
+        userName: req.user.name,
+        jobId,
+        jobTitle: job.title,
+        totalHours,
+        timestamp: new Date().toISOString()
+      };
+
+      socketManager.emitToRole('ADMIN', 'worker:check-out', eventData);
+      socketManager.emitToRole('SUPER_ADMIN', 'worker:check-out', eventData);
+    }
 
     res.json({
       success: true,
