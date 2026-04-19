@@ -262,9 +262,42 @@ router.delete('/users/:id', auth, authorize('ADMIN', 'SUPER_ADMIN'), async (req,
  *       required: true
  *       content:
  *         application/json:
- *           schema:
+*           schema:
  *             type: object
  *             required: [name, email, password, companyName]
+ *             example:
+ *               name: John Doe
+ *               email: john@company.com
+ *               password: password123
+ *               companyName: Acme Corp
+ *               contactPhone: "1234567890"
+ *               industry: Technology
+ *             properties:
+ *               name:
+ *                 type: string
+ *               email:
+ *                 type: string
+ *               password:
+ *                 type: string
+ *               companyName:
+ *                 type: string
+ *               contactPhone:
+ *                 type: string
+ *               companyAddress:
+ *                 type: object
+ *                 properties:
+ *                   street:
+ *                     type: string
+ *                   city:
+ *                     type: string
+ *                   state:
+ *                     type: string
+ *                   zipCode:
+ *                     type: string
+ *                   country:
+ *                     type: string
+ *               industry:
+ *                 type: string
  *     responses:
  *       201:
  *         description: Client created
@@ -470,6 +503,9 @@ router.get('/jobs/:id', async (req, res, next) => {
  *           schema:
  *             type: object
  *             required: [userIds, jobId]
+ *             example:
+ *               userIds: ["_worker_id_1", "_worker_id_2"]
+ *               jobId: _job_id_
  *     responses:
  *       201:
  *         description: Workers assigned
