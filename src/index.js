@@ -17,9 +17,23 @@ const httpServer = createServer(app);
 app.use(securityMiddleware);
 
 const corsOrigin = process.env.CORS_ORIGIN
-  ? process.env.CORS_ORIGIN.split(',')
-  : '*';
-app.use(cors({ origin: corsOrigin, credentials: true }));
+  ? process.env.CORS_ORIGIN.split(',').map(o => o.trim())
+  : ['*'];
+
+const corsOptions = {
+  origin: function(origin, callback) {
+    if (!origin || corsOrigin.includes('*') || corsOrigin.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+};
+
+app.use(cors(corsOptions));
 app.use(express.json({ limit: '10kb' }));
 app.use(express.urlencoded({ extended: true, limit: '10kb' }));
 

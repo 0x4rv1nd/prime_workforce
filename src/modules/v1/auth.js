@@ -125,10 +125,6 @@ router.post('/login', validate(schemas.login), async (req, res, next) => {
       return res.status(401).json({ success: false, message: 'Invalid credentials' });
     }
 
-    if (user.role !== 'ADMIN' && user.role !== 'SUPER_ADMIN' && !user.isApproved) {
-      return res.status(403).json({ success: false, message: 'Account pending approval' });
-    }
-
     const token = generateToken(user);
 
     await ActivityLog.create({
