@@ -79,7 +79,7 @@ router.get('/users', async (req, res, next) => {
 
 /**
  * @swagger
- * /admin/users/:id:
+ * /admin/users/{id}:
  *   get:
  *     summary: Get specific user
  *     tags: [Admin - Users]
@@ -112,7 +112,7 @@ router.get('/users/:id', async (req, res, next) => {
 
 /**
  * @swagger
- * /admin/users/:id/approve:
+ * /admin/users/{id}/approve:
  *   patch:
  *     summary: Approve worker
  *     tags: [Admin - Users]
@@ -159,7 +159,7 @@ router.patch('/users/:id/approve', async (req, res, next) => {
 
 /**
  * @swagger
- * /admin/users/:id/reject:
+ * /admin/users/{id}/reject:
  *   patch:
  *     summary: Reject worker
  *     tags: [Admin - Users]
@@ -206,7 +206,7 @@ router.patch('/users/:id/reject', async (req, res, next) => {
 
 /**
  * @swagger
- * /admin/users/:id:
+ * /admin/users/{id}:
  *   delete:
  *     summary: Delete user
  *     tags: [Admin - Users]
@@ -243,6 +243,82 @@ router.delete('/users/:id', auth, authorize('ADMIN', 'SUPER_ADMIN'), async (req,
     });
 
     res.json({ success: true, message: 'User deleted successfully' });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ============ ADMIN USERS ============
+
+/**
+ * @swagger
+ * /admin/admins:
+ *   post:
+ *     summary: Create a new admin user
+ *     tags: [Admin - Users]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [name, email, password]
+ *             properties:
+ *               name:
+ *                 type: string
+ *               email:
+ *                 type: string
+ *               password:
+ *                 type: string
+ *               role:
+ *                 type: string
+ *                 enum: [ADMIN, SUPER_ADMIN]
+ *     responses:
+ *       201:
+ *         description: Admin created
+ */
+router.post('/admins', authorize('SUPER_ADMIN', 'ADMIN'), validate(schemas.createAdmin), async (req, res, next) => {
+  try {
+    const { name, email, password, role = 'ADMIN' } = req.body;
+
+    // Only SUPER_ADMIN can create SUPER_ADMIN
+    const createdRole = (role === 'SUPER_ADMIN' && req.user.role === 'SUPER_ADMIN') ? 'SUPER_ADMIN' : 'ADMIN';
+
+    const existingUser = await User.findOne({ email: email.toLowerCase() });
+    if (existingUser) {
+      return res.status(400).json({ success: false, message: 'Email already exists' });
+    }
+
+    const hashedPassword = await hashPassword(password);
+
+    const user = await User.create({
+      name,
+      email: email.toLowerCase(),
+      password: hashedPassword,
+      role: createdRole,
+      isApproved: true
+    });
+
+    await ActivityLog.create({
+      userId: req.user._id,
+      action: 'ADMIN_CREATED',
+      entityType: 'User',
+      entityId: user._id
+    });
+
+    res.status(201).json({
+      success: true,
+      message: 'Admin created successfully',
+      data: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        isApproved: user.isApproved
+      }
+    });
   } catch (error) {
     next(error);
   }
@@ -392,7 +468,7 @@ router.get('/clients', async (req, res, next) => {
 
 /**
  * @swagger
- * /admin/clients/:id:
+ * /admin/clients/{id}:
  *   get:
  *     summary: Get client by ID
  *     tags: [Admin - Clients]
@@ -463,7 +539,7 @@ router.get('/jobs', async (req, res, next) => {
 
 /**
  * @swagger
- * /admin/jobs/:id:
+ * /admin/jobs/{id}:
  *   get:
  *     summary: Get job by ID
  *     tags: [Admin - Jobs]

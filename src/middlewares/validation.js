@@ -56,6 +56,13 @@ export const schemas = {
     password: z.string().min(1, 'Password is required')
   }),
 
+  createAdmin: z.object({
+    name: z.string().min(1, 'Name is required').max(100),
+    email: z.string().email('Invalid email format'),
+    password: z.string().min(6, 'Password must be at least 6 characters'),
+    role: z.enum(['ADMIN', 'SUPER_ADMIN']).optional()
+  }),
+
   createClient: z.object({
     name: z.string().min(1, 'Name is required').max(100),
     email: z.string().email('Invalid email format'),

@@ -33,8 +33,6 @@ app.use(logger);
 app.use('/auth', authLimiter);
 app.use(generalLimiter);
 
-app.use('/api/v1', apiRoutes);
-
 const socketManager = initializeSocket(httpServer);
 
 const swaggerOptions = {
@@ -75,11 +73,12 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-app.get('/', (req, res) => {
+app.use('/api/v1', apiRoutes);
+
+app.get('/api/v1', (req, res) => {
   res.json({ 
     success: true,
-    message: 'Prime Workforce API',
-    version: '1.0.0',
+    message: 'Prime Workforce API v1',
     endpoints: {
       auth: '/api/v1/auth',
       admin: '/api/v1/admin',

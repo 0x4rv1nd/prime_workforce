@@ -53,7 +53,7 @@ router.post('/register', validate(schemas.register), async (req, res, next) => {
       email: email.toLowerCase(),
       password: hashedPassword,
       role: 'WORKER',
-      isApproved: false
+      isApproved: true
     });
 
     await ActivityLog.create({
@@ -61,15 +61,20 @@ router.post('/register', validate(schemas.register), async (req, res, next) => {
       action: 'USER_REGISTERED'
     });
 
+    const token = generateToken(user);
+
     res.status(201).json({
       success: true,
-      message: 'Registration successful. Waiting for admin approval.',
+      message: 'Registration successful!',
       data: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        isApproved: user.isApproved
+        token,
+        user: {
+          id: user._id,
+          name: user.name,
+          email: user.email,
+          role: user.role,
+          isApproved: user.isApproved
+        }
       }
     });
   } catch (error) {
