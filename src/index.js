@@ -97,7 +97,7 @@ app.get('/api/v1', (req, res) => {
       auth: '/api/v1/auth',
       admin: '/api/v1/admin',
       client: '/api/v1/client',
-      worker: '/api/v1/worker',
+      promoter: '/api/v1/promoter',
       docs: '/api-docs'
     }
   });

@@ -44,9 +44,9 @@ const seedTestData = async () => {
       },
       {
         name: 'Test Worker',
-        email: 'worker1@prime.com',
+        email: 'promoter1@prime.com',
         password: 'Worker@1212',
-        role: 'WORKER',
+        role: 'PROMOTER',
         isApproved: true,
         phone: '4445556666'
       },
@@ -54,7 +54,7 @@ const seedTestData = async () => {
         name: 'Test User',
         email: 'testuser@prime.com',
         password: 'User@123',
-        role: 'WORKER',
+        role: 'PROMOTER',
         isApproved: true,
         phone: '7778889999'
       }

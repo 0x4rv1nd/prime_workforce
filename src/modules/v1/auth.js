@@ -11,7 +11,7 @@ const router = Router();
  * @swagger
  * /auth/register:
  *   post:
- *     summary: Register a new worker (Public)
+ *     summary: Register a new promoter (Public)
  *     tags: [Auth]
  *     description: Workers can self-register. They need admin approval to login.
  *     requestBody:
@@ -52,7 +52,7 @@ router.post('/register', validate(schemas.register), async (req, res, next) => {
       name,
       email: email.toLowerCase(),
       password: hashedPassword,
-      role: 'WORKER',
+      role: 'PROMOTER',
       isApproved: true
     });
 

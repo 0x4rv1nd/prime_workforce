@@ -9,7 +9,7 @@ import { validate, schemas } from '../../middlewares/validation.js';
 
 const router = Router();
 
-router.use(auth, authorize('WORKER'));
+router.use(auth, authorize('PROMOTER'));
 
 // Helper functions
 const calculateDistance = (lat1, lng1, lat2, lng2) => {
@@ -31,9 +31,9 @@ const isWithinGeofence = (userLat, userLng, jobLocation, radius = 500) => {
 
 /**
  * @swagger
- * /worker/profile:
+ * /promoter/profile:
  *   get:
- *     summary: Get worker profile
+ *     summary: Get promoter profile
  *     tags: [Worker - Profile]
  *     security:
  *       - bearerAuth: []
@@ -61,9 +61,9 @@ router.get('/profile', async (req, res, next) => {
 
 /**
  * @swagger
- * /worker/profile:
+ * /promoter/profile:
  *   put:
- *     summary: Update worker profile
+ *     summary: Update promoter profile
  *     tags: [Worker - Profile]
  *     security:
  *       - bearerAuth: []
@@ -106,7 +106,7 @@ router.put('/profile', validate(schemas.updateUser), async (req, res, next) => {
 
 /**
  * @swagger
- * /worker/availability:
+ * /promoter/availability:
  *   post:
  *     summary: Set availability
  *     tags: [Worker - Availability]
@@ -153,7 +153,7 @@ router.post('/availability', async (req, res, next) => {
 
 /**
  * @swagger
- * /worker/availability:
+ * /promoter/availability:
  *   get:
  *     summary: Get availability
  *     tags: [Worker - Availability]
@@ -186,7 +186,7 @@ router.get('/availability', async (req, res, next) => {
 
 /**
  * @swagger
- * /worker/jobs:
+ * /promoter/jobs:
  *   get:
  *     summary: Get assigned jobs
  *     tags: [Worker - Jobs]
@@ -223,7 +223,7 @@ router.get('/jobs', async (req, res, next) => {
 
 /**
  * @swagger
- * /worker/jobs/:id:
+ * /promoter/jobs/:id:
  *   get:
  *     summary: Get job by ID
  *     tags: [Worker - Jobs]
@@ -257,7 +257,7 @@ router.get('/jobs/:id', async (req, res, next) => {
 
 /**
  * @swagger
- * /worker/attendance/check-in:
+ * /promoter/attendance/check-in:
  *   post:
  *     summary: Check in to job
  *     tags: [Worker - Attendance]
@@ -372,7 +372,7 @@ router.post('/attendance/check-in', validate(schemas.checkIn), async (req, res, 
 
 /**
  * @swagger
- * /worker/attendance/check-out:
+ * /promoter/attendance/check-out:
  *   post:
  *     summary: Check out from job
  *     tags: [Worker - Attendance]
@@ -449,7 +449,7 @@ router.post('/attendance/check-out', validate(schemas.checkOut), async (req, res
 
 /**
  * @swagger
- * /worker/attendance:
+ * /promoter/attendance:
  *   get:
  *     summary: Get attendance records
  *     tags: [Worker - Attendance]

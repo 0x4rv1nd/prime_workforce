@@ -127,7 +127,7 @@ router.post('/', auth, authorize('ADMIN', 'CLIENT'), validate(schemas.createJob)
 
       socketManager.emitToRole('ADMIN', 'job:created', eventData);
       socketManager.emitToRole('SUPER_ADMIN', 'job:created', eventData);
-      socketManager.emitToRole('WORKER', 'job:created', eventData);
+      socketManager.emitToRole('PROMOTER', 'job:created', eventData);
     }
 
     res.status(201).json({
@@ -337,7 +337,7 @@ router.put('/:id', auth, authorize('ADMIN', 'CLIENT'), async (req, res, next) =>
       socketManager.emitToRole('ADMIN', 'job:updated', eventData);
       socketManager.emitToRole('SUPER_ADMIN', 'job:updated', eventData);
       socketManager.emitToRole('CLIENT', 'job:updated', eventData);
-      socketManager.emitToRole('WORKER', 'job:updated', eventData);
+      socketManager.emitToRole('PROMOTER', 'job:updated', eventData);
     }
 
     res.json({ success: true, data: updatedJob });
@@ -390,7 +390,7 @@ router.delete('/:id', auth, authorize('ADMIN'), async (req, res, next) => {
  * @swagger
  * /jobs/{id}/assign:
  *   post:
- *     summary: Assign workers to a job
+ *     summary: Assign promoters to a job
  *     tags: [Jobs - Assignments]
  *     security:
  *       - bearerAuth: []
@@ -435,12 +435,12 @@ router.post('/:id/assign', auth, authorize('ADMIN', 'SUPER_ADMIN'), validate(sch
 
     const validWorkers = await User.find({
       _id: { $in: userIds },
-      role: 'WORKER',
+      role: 'PROMOTER',
       isApproved: true
     });
 
     if (validWorkers.length === 0) {
-      return res.status(400).json({ success: false, message: 'No valid approved workers found' });
+      return res.status(400).json({ success: false, message: 'No valid approved promoters found' });
     }
 
     const existingAssignments = await Assignment.find({
@@ -451,8 +451,8 @@ router.post('/:id/assign', auth, authorize('ADMIN', 'SUPER_ADMIN'), validate(sch
     const existingUserIds = existingAssignments.map(a => a.userId.toString());
     const newAssignments = validWorkers
       .filter(w => !existingUserIds.includes(w._id.toString()))
-      .map(worker => ({
-        userId: worker._id,
+      .map(promoter => ({
+        userId: promoter._id,
         jobId,
         assignedBy: req.user._id,
         status: 'PENDING'
@@ -464,15 +464,15 @@ router.post('/:id/assign', auth, authorize('ADMIN', 'SUPER_ADMIN'), validate(sch
 
     await ActivityLog.create({
       userId: req.user._id,
-      action: 'WORKERS_ASSIGNED',
+      action: 'PROMOTERS_ASSIGNED',
       entityType: 'Job',
       entityId: jobId,
-      details: { assignedCount: newAssignments.length, workerIds: validWorkers.map(w => w._id) }
+      details: { assignedCount: newAssignments.length, promoterIds: validWorkers.map(w => w._id) }
     });
 
     res.status(201).json({
       success: true,
-      message: `${newAssignments.length} worker(s) assigned successfully`,
+      message: `${newAssignments.length} promoter(s) assigned successfully`,
       data: {
         assigned: newAssignments.length,
         alreadyAssigned: existingUserIds.length
@@ -485,9 +485,9 @@ router.post('/:id/assign', auth, authorize('ADMIN', 'SUPER_ADMIN'), validate(sch
 
 /**
  * @swagger
- * /jobs/{id}/workers:
+ * /jobs/{id}/promoters:
  *   get:
- *     summary: Get workers assigned to a job
+ *     summary: Get promoters assigned to a job
  *     tags: [Jobs - Assignments]
  *     security:
  *       - bearerAuth: []
@@ -499,9 +499,9 @@ router.post('/:id/assign', auth, authorize('ADMIN', 'SUPER_ADMIN'), validate(sch
  *           type: string
  *     responses:
  *       200:
- *         description: List of assigned workers
+ *         description: List of assigned promoters
  */
-router.get('/:id/workers', auth, async (req, res, next) => {
+router.get('/:id/promoters', auth, async (req, res, next) => {
   try {
     const assignments = await Assignment.find({ jobId: req.params.id })
       .populate('userId', 'name email phone')
@@ -707,7 +707,7 @@ router.get('/assignments', auth, async (req, res, next) => {
     if (userId) filter.userId = userId;
     if (status) filter.status = status;
 
-    if (req.user.role === 'WORKER') {
+    if (req.user.role === 'PROMOTER') {
       filter.userId = req.user._id;
     }
 

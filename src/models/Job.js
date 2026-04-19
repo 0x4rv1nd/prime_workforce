@@ -19,7 +19,7 @@ const jobSchema = new mongoose.Schema({
   endDate: { type: Date, required: true },
   status: { 
     type: String, 
-    enum: ['PENDING', 'ACTIVE', 'COMPLETED', 'CANCELLED'], 
+    enum: ['PENDING', 'OPEN', 'ACTIVE', 'COMPLETED', 'CANCELLED'], 
     default: 'PENDING',
     index: true 
   },

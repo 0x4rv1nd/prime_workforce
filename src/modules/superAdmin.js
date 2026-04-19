@@ -319,11 +319,11 @@ router.delete('/admins/:id', auth, authorize('SUPER_ADMIN'), async (req, res, ne
 
 /**
  * @swagger
- * /super-admin/workers:
+ * /super-admin/promoters:
  *   post:
- *     summary: Create a new worker
+ *     summary: Create a new promoter
  *     tags: [Super Admin - Client Management]
- *     description: Create a new worker. Both Super Admin and Admin can perform this action.
+ *     description: Create a new promoter. Both Super Admin and Admin can perform this action.
  *     security:
  *       - bearerAuth: []
  *     requestBody:
@@ -342,10 +342,10 @@ router.delete('/admins/:id', auth, authorize('SUPER_ADMIN'), async (req, res, ne
  *                 example: John Worker
  *               email:
  *                 type: string
- *                 example: worker@example.com
+ *                 example: promoter@example.com
  *               password:
  *                 type: string
- *                 example: worker123
+ *                 example: promoter123
  *               phone:
  *                 type: string
  *                 example: +1234567890
@@ -362,7 +362,7 @@ router.delete('/admins/:id', auth, authorize('SUPER_ADMIN'), async (req, res, ne
  *       403:
  *         description: Forbidden
  */
-router.post('/workers', auth, authorize('SUPER_ADMIN', 'ADMIN'), validate(schemas.createWorker), async (req, res, next) => {
+router.post('/promoters', auth, authorize('SUPER_ADMIN', 'ADMIN'), validate(schemas.createWorker), async (req, res, next) => {
   try {
     const { name, email, password, phone, isApproved } = req.body;
 
@@ -373,20 +373,20 @@ router.post('/workers', auth, authorize('SUPER_ADMIN', 'ADMIN'), validate(schema
 
     const hashedPassword = await hashPassword(password);
 
-    const worker = await User.create({
+    const promoter = await User.create({
       name,
       email: email.toLowerCase(),
       password: hashedPassword,
-      role: 'WORKER',
+      role: 'PROMOTER',
       isApproved: isApproved || false,
       phone
     });
 
     await ActivityLog.create({
       userId: req.user._id,
-      action: 'WORKER_CREATED',
+      action: 'PROMOTER_CREATED',
       entityType: 'User',
-      entityId: worker._id,
+      entityId: promoter._id,
       details: { createdBy: req.user.role }
     });
 
@@ -394,11 +394,11 @@ router.post('/workers', auth, authorize('SUPER_ADMIN', 'ADMIN'), validate(schema
       success: true,
       message: 'Worker created successfully',
       data: {
-        id: worker._id,
-        name: worker.name,
-        email: worker.email,
-        role: worker.role,
-        isApproved: worker.isApproved
+        id: promoter._id,
+        name: promoter.name,
+        email: promoter.email,
+        role: promoter.role,
+        isApproved: promoter.isApproved
       }
     });
   } catch (error) {
@@ -408,9 +408,9 @@ router.post('/workers', auth, authorize('SUPER_ADMIN', 'ADMIN'), validate(schema
 
 /**
  * @swagger
- * /super-admin/workers:
+ * /super-admin/promoters:
  *   get:
- *     summary: Get all workers (Super Admin or Admin)
+ *     summary: Get all promoters (Super Admin or Admin)
  *     tags: [Super Admin - Client Management]
  *     security:
  *       - bearerAuth: []
@@ -431,12 +431,12 @@ router.post('/workers', auth, authorize('SUPER_ADMIN', 'ADMIN'), validate(schema
  *           default: 20
  *     responses:
  *       200:
- *         description: List of workers
+ *         description: List of promoters
  */
-router.get('/workers', auth, authorize('SUPER_ADMIN', 'ADMIN'), async (req, res, next) => {
+router.get('/promoters', auth, authorize('SUPER_ADMIN', 'ADMIN'), async (req, res, next) => {
   try {
     const { isApproved, page = 1, limit = 20 } = req.query;
-    const filter = { role: 'WORKER' };
+    const filter = { role: 'PROMOTER' };
 
     if (isApproved !== undefined) {
       filter.isApproved = isApproved === 'true';
@@ -444,7 +444,7 @@ router.get('/workers', auth, authorize('SUPER_ADMIN', 'ADMIN'), async (req, res,
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
-    const workers = await User.find(filter)
+    const promoters = await User.find(filter)
       .select('-password')
       .sort({ createdAt: -1 })
       .skip(skip)
@@ -454,7 +454,7 @@ router.get('/workers', auth, authorize('SUPER_ADMIN', 'ADMIN'), async (req, res,
 
     res.json({
       success: true,
-      data: workers,
+      data: promoters,
       pagination: {
         page: parseInt(page),
         limit: parseInt(limit),
@@ -469,9 +469,9 @@ router.get('/workers', auth, authorize('SUPER_ADMIN', 'ADMIN'), async (req, res,
 
 /**
  * @swagger
- * /super-admin/workers/{id}:
+ * /super-admin/promoters/{id}:
  *   get:
- *     summary: Get worker by ID (Super Admin or Admin)
+ *     summary: Get promoter by ID (Super Admin or Admin)
  *     tags: [Super Admin - Client Management]
  *     security:
  *       - bearerAuth: []
@@ -487,14 +487,14 @@ router.get('/workers', auth, authorize('SUPER_ADMIN', 'ADMIN'), async (req, res,
  *       404:
  *         description: Worker not found
  */
-router.get('/workers/:id', auth, authorize('SUPER_ADMIN', 'ADMIN'), async (req, res, next) => {
+router.get('/promoters/:id', auth, authorize('SUPER_ADMIN', 'ADMIN'), async (req, res, next) => {
   try {
-    const worker = await User.findOne({ _id: req.params.id, role: 'WORKER' }).select('-password');
-    if (!worker) {
+    const promoter = await User.findOne({ _id: req.params.id, role: 'PROMOTER' }).select('-password');
+    if (!promoter) {
       return res.status(404).json({ success: false, message: 'Worker not found' });
     }
 
-    res.json({ success: true, data: worker });
+    res.json({ success: true, data: promoter });
   } catch (error) {
     next(error);
   }
@@ -502,9 +502,9 @@ router.get('/workers/:id', auth, authorize('SUPER_ADMIN', 'ADMIN'), async (req, 
 
 /**
  * @swagger
- * /super-admin/workers/{id}:
+ * /super-admin/promoters/{id}:
  *   put:
- *     summary: Update worker (Super Admin or Admin)
+ *     summary: Update promoter (Super Admin or Admin)
  *     tags: [Super Admin - Client Management]
  *     security:
  *       - bearerAuth: []
@@ -532,10 +532,10 @@ router.get('/workers/:id', auth, authorize('SUPER_ADMIN', 'ADMIN'), async (req, 
  *       404:
  *         description: Worker not found
  */
-router.put('/workers/:id', auth, authorize('SUPER_ADMIN', 'ADMIN'), async (req, res, next) => {
+router.put('/promoters/:id', auth, authorize('SUPER_ADMIN', 'ADMIN'), async (req, res, next) => {
   try {
-    const worker = await User.findOne({ _id: req.params.id, role: 'WORKER' });
-    if (!worker) {
+    const promoter = await User.findOne({ _id: req.params.id, role: 'PROMOTER' });
+    if (!promoter) {
       return res.status(404).json({ success: false, message: 'Worker not found' });
     }
 
@@ -556,7 +556,7 @@ router.put('/workers/:id', auth, authorize('SUPER_ADMIN', 'ADMIN'), async (req, 
 
     await ActivityLog.create({
       userId: req.user._id,
-      action: 'WORKER_UPDATED',
+      action: 'PROMOTER_UPDATED',
       entityType: 'User',
       entityId: req.params.id,
       details: updates
@@ -570,9 +570,9 @@ router.put('/workers/:id', auth, authorize('SUPER_ADMIN', 'ADMIN'), async (req, 
 
 /**
  * @swagger
- * /super-admin/workers/{id}:
+ * /super-admin/promoters/{id}:
  *   delete:
- *     summary: Delete worker (Super Admin or Admin)
+ *     summary: Delete promoter (Super Admin or Admin)
  *     tags: [Super Admin - Client Management]
  *     security:
  *       - bearerAuth: []
@@ -588,10 +588,10 @@ router.put('/workers/:id', auth, authorize('SUPER_ADMIN', 'ADMIN'), async (req, 
  *       404:
  *         description: Worker not found
  */
-router.delete('/workers/:id', auth, authorize('SUPER_ADMIN', 'ADMIN'), async (req, res, next) => {
+router.delete('/promoters/:id', auth, authorize('SUPER_ADMIN', 'ADMIN'), async (req, res, next) => {
   try {
-    const worker = await User.findOne({ _id: req.params.id, role: 'WORKER' });
-    if (!worker) {
+    const promoter = await User.findOne({ _id: req.params.id, role: 'PROMOTER' });
+    if (!promoter) {
       return res.status(404).json({ success: false, message: 'Worker not found' });
     }
 
@@ -599,7 +599,7 @@ router.delete('/workers/:id', auth, authorize('SUPER_ADMIN', 'ADMIN'), async (re
 
     await ActivityLog.create({
       userId: req.user._id,
-      action: 'WORKER_DELETED',
+      action: 'PROMOTER_DELETED',
       entityType: 'User',
       entityId: req.params.id
     });
@@ -612,9 +612,9 @@ router.delete('/workers/:id', auth, authorize('SUPER_ADMIN', 'ADMIN'), async (re
 
 /**
  * @swagger
- * /super-admin/workers/{id}/approve:
+ * /super-admin/promoters/{id}/approve:
  *   post:
- *     summary: Approve worker (Super Admin or Admin)
+ *     summary: Approve promoter (Super Admin or Admin)
  *     tags: [Super Admin - Client Management]
  *     security:
  *       - bearerAuth: []
@@ -630,19 +630,19 @@ router.delete('/workers/:id', auth, authorize('SUPER_ADMIN', 'ADMIN'), async (re
  *       404:
  *         description: Worker not found
  */
-router.post('/workers/:id/approve', auth, authorize('SUPER_ADMIN', 'ADMIN'), async (req, res, next) => {
+router.post('/promoters/:id/approve', auth, authorize('SUPER_ADMIN', 'ADMIN'), async (req, res, next) => {
   try {
-    const worker = await User.findOne({ _id: req.params.id, role: 'WORKER' });
-    if (!worker) {
+    const promoter = await User.findOne({ _id: req.params.id, role: 'PROMOTER' });
+    if (!promoter) {
       return res.status(404).json({ success: false, message: 'Worker not found' });
     }
 
-    worker.isApproved = true;
-    await worker.save();
+    promoter.isApproved = true;
+    await promoter.save();
 
     await ActivityLog.create({
       userId: req.user._id,
-      action: 'WORKER_APPROVED',
+      action: 'PROMOTER_APPROVED',
       entityType: 'User',
       entityId: req.params.id
     });
@@ -650,7 +650,7 @@ router.post('/workers/:id/approve', auth, authorize('SUPER_ADMIN', 'ADMIN'), asy
     res.json({
       success: true,
       message: 'Worker approved successfully',
-      data: { id: worker._id, isApproved: worker.isApproved }
+      data: { id: promoter._id, isApproved: promoter.isApproved }
     });
   } catch (error) {
     next(error);
@@ -977,18 +977,18 @@ router.get('/dashboard', auth, authorize('SUPER_ADMIN'), async (req, res, next) 
   try {
     const [totalAdmins, totalWorkers, totalClients, totalJobs, approvedWorkers, pendingWorkers] = await Promise.all([
       User.countDocuments({ role: 'ADMIN' }),
-      User.countDocuments({ role: 'WORKER' }),
+      User.countDocuments({ role: 'PROMOTER' }),
       Client.countDocuments(),
       0, // Job.countDocuments() - can add later
-      User.countDocuments({ role: 'WORKER', isApproved: true }),
-      User.countDocuments({ role: 'WORKER', isApproved: false })
+      User.countDocuments({ role: 'PROMOTER', isApproved: true }),
+      User.countDocuments({ role: 'PROMOTER', isApproved: false })
     ]);
 
     res.json({
       success: true,
       data: {
         admins: totalAdmins,
-        workers: totalWorkers,
+        promoters: totalWorkers,
         clients: totalClients,
         jobs: totalJobs,
         approvedWorkers,

@@ -123,7 +123,7 @@ export const schemas = {
   }),
 
   assignWorker: z.object({
-    userIds: z.array(z.string()).min(1, 'At least one worker required'),
+    userIds: z.array(z.string()).min(1, 'At least one promoter required'),
     jobId: z.string()
   }),
 

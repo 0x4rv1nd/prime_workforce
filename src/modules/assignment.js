@@ -10,9 +10,9 @@ import { getSocketManager } from '../utils/socket.js';
 
 const router = Router();
 
-async function checkWorkerAvailability(workerId, jobStartDate, jobEndDate) {
+async function checkWorkerAvailability(promoterId, jobStartDate, jobEndDate) {
   const availabilities = await Availability.find({
-    userId: workerId,
+    userId: promoterId,
     date: { $gte: jobStartDate, $lte: jobEndDate },
     isAvailable: false
   });
@@ -23,7 +23,7 @@ async function checkWorkerAvailability(workerId, jobStartDate, jobEndDate) {
  * @swagger
  * /assign:
  *   post:
- *     summary: Assign workers to a job
+ *     summary: Assign promoters to a job
  *     tags: [Assignments]
  *     security:
  *       - bearerAuth: []
@@ -62,12 +62,12 @@ router.post('/', auth, authorize('ADMIN', 'SUPER_ADMIN'), validate(schemas.assig
 
     const validWorkers = await User.find({
       _id: { $in: userIds },
-      role: 'WORKER',
+      role: 'PROMOTER',
       isApproved: true
     });
 
     if (validWorkers.length === 0) {
-      return res.status(400).json({ success: false, message: 'No valid approved workers found' });
+      return res.status(400).json({ success: false, message: 'No valid approved promoters found' });
     }
 
     const existingAssignments = await Assignment.find({
@@ -80,15 +80,15 @@ router.post('/', auth, authorize('ADMIN', 'SUPER_ADMIN'), validate(schemas.assig
     const unavailableWorkers = [];
     const availableWorkers = [];
     
-    for (const worker of validWorkers) {
-      if (existingUserIds.includes(worker._id.toString())) {
+    for (const promoter of validWorkers) {
+      if (existingUserIds.includes(promoter._id.toString())) {
         continue;
       }
-      const isAvailable = await checkWorkerAvailability(worker._id, job.startDate, job.endDate);
+      const isAvailable = await checkWorkerAvailability(promoter._id, job.startDate, job.endDate);
       if (!isAvailable) {
-        unavailableWorkers.push(worker.name);
+        unavailableWorkers.push(promoter.name);
       } else {
-        availableWorkers.push(worker);
+        availableWorkers.push(promoter);
       }
     }
 
@@ -99,8 +99,8 @@ router.post('/', auth, authorize('ADMIN', 'SUPER_ADMIN'), validate(schemas.assig
       });
     }
 
-    const newAssignments = availableWorkers.map(worker => ({
-      userId: worker._id,
+    const newAssignments = availableWorkers.map(promoter => ({
+      userId: promoter._id,
       jobId,
       assignedBy: req.user._id,
       status: 'PENDING'
@@ -112,10 +112,10 @@ router.post('/', auth, authorize('ADMIN', 'SUPER_ADMIN'), validate(schemas.assig
 
     await ActivityLog.create({
       userId: req.user._id,
-      action: 'WORKERS_ASSIGNED',
+      action: 'PROMOTERS_ASSIGNED',
       entityType: 'Job',
       entityId: jobId,
-      details: { assignedCount: newAssignments.length, workerIds: validWorkers.map(w => w._id) }
+      details: { assignedCount: newAssignments.length, promoterIds: validWorkers.map(w => w._id) }
     });
 
     const socketManager = getSocketManager();
@@ -131,9 +131,9 @@ router.post('/', auth, authorize('ADMIN', 'SUPER_ADMIN'), validate(schemas.assig
       socketManager.emitToRole('ADMIN', 'assignment:created', eventData);
       socketManager.emitToRole('SUPER_ADMIN', 'assignment:created', eventData);
 
-      for (const worker of availableWorkers) {
+      for (const promoter of availableWorkers) {
         await socketManager.sendNotification(
-          worker._id,
+          promoter._id,
           'New Assignment',
           `You have been assigned to ${job.title}`,
           'ASSIGNMENT',
@@ -144,7 +144,7 @@ router.post('/', auth, authorize('ADMIN', 'SUPER_ADMIN'), validate(schemas.assig
 
     res.status(201).json({
       success: true,
-      message: `${newAssignments.length} worker(s) assigned successfully`,
+      message: `${newAssignments.length} promoter(s) assigned successfully`,
       data: {
         assigned: newAssignments.length,
         alreadyAssigned: existingUserIds.length
@@ -199,7 +199,7 @@ router.get('/', auth, async (req, res, next) => {
     if (userId) filter.userId = userId;
     if (status) filter.status = status;
 
-    if (req.user.role === 'WORKER') {
+    if (req.user.role === 'PROMOTER') {
       filter.userId = req.user._id;
     }
 
@@ -261,7 +261,7 @@ router.get('/:id', auth, async (req, res, next) => {
       return res.status(404).json({ success: false, message: 'Assignment not found' });
     }
 
-    if (req.user.role === 'WORKER' && assignment.userId._id.toString() !== req.user._id.toString()) {
+    if (req.user.role === 'PROMOTER' && assignment.userId._id.toString() !== req.user._id.toString()) {
       return res.status(403).json({ success: false, message: 'Access denied' });
     }
 
@@ -345,7 +345,7 @@ router.put('/:id', auth, authorize('ADMIN', 'SUPER_ADMIN'), async (req, res, nex
         jobId: updatedAssignment.jobId,
         jobTitle: updatedJob?.title,
         status,
-        workerName: updatedAssignment.userId?.name,
+        promoterName: updatedAssignment.userId?.name,
         timestamp: new Date().toISOString()
       };
 
@@ -404,7 +404,7 @@ router.delete('/:id', auth, authorize('ADMIN', 'SUPER_ADMIN'), async (req, res, 
  * @swagger
  * /assign/job/{jobId}:
  *   get:
- *     summary: Get workers assigned to a job
+ *     summary: Get promoters assigned to a job
  *     tags: [Assignments]
  *     security:
  *       - bearerAuth: []
@@ -416,7 +416,7 @@ router.delete('/:id', auth, authorize('ADMIN', 'SUPER_ADMIN'), async (req, res, 
  *           type: string
  *     responses:
  *       200:
- *         description: List of assigned workers
+ *         description: List of assigned promoters
  */
 router.get('/job/:jobId', auth, async (req, res, next) => {
   try {

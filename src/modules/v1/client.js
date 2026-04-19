@@ -257,17 +257,17 @@ router.delete('/jobs/:id', async (req, res, next) => {
 
 /**
  * @swagger
- * /client/workers:
+ * /client/promoters:
  *   get:
- *     summary: Get workers for client jobs
+ *     summary: Get promoters for client jobs
  *     tags: [Client - Workers]
  *     security:
  *       - bearerAuth: []
  *     responses:
  *       200:
- *         description: List of workers
+ *         description: List of promoters
  */
-router.get('/workers', async (req, res, next) => {
+router.get('/promoters', async (req, res, next) => {
   try {
     const client = await Client.findOne({ userId: req.user._id });
     if (!client) {
@@ -281,14 +281,14 @@ router.get('/workers', async (req, res, next) => {
       .populate('userId', 'name email phone')
       .populate('jobId', 'title');
 
-    const workers = assignments.map(a => ({
+    const promoters = assignments.map(a => ({
       ...a.userId.toObject(),
       job: a.jobId,
       assignmentStatus: a.status,
       assignedAt: a.assignedAt
     }));
 
-    res.json({ success: true, data: workers });
+    res.json({ success: true, data: promoters });
   } catch (error) {
     next(error);
   }
@@ -342,7 +342,7 @@ router.get('/attendance', async (req, res, next) => {
  * @swagger
  * /client/attendance/:userId:
  *   get:
- *     summary: Get attendance for specific worker
+ *     summary: Get attendance for specific promoter
  *     tags: [Client - Attendance]
  *     security:
  *       - bearerAuth: []

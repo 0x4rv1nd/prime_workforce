@@ -12,7 +12,7 @@ const router = Router();
  * @swagger
  * /auth/register:
  *   post:
- *     summary: Register a new worker (Public)
+ *     summary: Register a new promoter (Public)
  *     tags: [Auth - Worker]
  *     description: Workers can self-register. They need admin approval to login.
  *     requestBody:
@@ -53,7 +53,7 @@ router.post('/register', validate(schemas.register), async (req, res, next) => {
       name,
       email,
       password: hashedPassword,
-      role: 'WORKER',
+      role: 'PROMOTER',
       isApproved: false
     });
 
@@ -157,7 +157,7 @@ router.post('/login', validate(schemas.login), async (req, res, next) => {
  * @swagger
  * /auth/admin-approve/{id}:
  *   post:
- *     summary: Approve a worker (Admin/Super Admin)
+ *     summary: Approve a promoter (Admin/Super Admin)
  *     tags: [Auth - Approval]
  *     security:
  *       - bearerAuth: []
@@ -172,7 +172,7 @@ router.post('/login', validate(schemas.login), async (req, res, next) => {
  *       200:
  *         description: Worker approved successfully
  *       400:
- *         description: User not a worker or already approved
+ *         description: User not a promoter or already approved
  *       404:
  *         description: User not found
  *       401:
@@ -187,8 +187,8 @@ router.post('/admin-approve/:id', auth, authorize('SUPER_ADMIN', 'ADMIN'), async
       return res.status(404).json({ success: false, message: 'User not found' });
     }
 
-    if (user.role !== 'WORKER') {
-      return res.status(400).json({ success: false, message: 'Can only approve workers' });
+    if (user.role !== 'PROMOTER') {
+      return res.status(400).json({ success: false, message: 'Can only approve promoters' });
     }
 
     user.isApproved = true;
@@ -196,7 +196,7 @@ router.post('/admin-approve/:id', auth, authorize('SUPER_ADMIN', 'ADMIN'), async
 
     await ActivityLog.create({
       userId: req.user._id,
-      action: `APPROVED_WORKER_${user._id}`
+      action: `APPROVED_PROMOTER_${user._id}`
     });
 
     res.json({

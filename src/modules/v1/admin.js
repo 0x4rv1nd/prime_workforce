@@ -114,7 +114,7 @@ router.get('/users/:id', async (req, res, next) => {
  * @swagger
  * /admin/users/{id}/approve:
  *   patch:
- *     summary: Approve worker
+ *     summary: Approve promoter
  *     tags: [Admin - Users]
  *     security:
  *       - bearerAuth: []
@@ -142,7 +142,7 @@ router.patch('/users/:id/approve', async (req, res, next) => {
 
     await ActivityLog.create({
       userId: req.user._id,
-      action: 'WORKER_APPROVED',
+      action: 'PROMOTER_APPROVED',
       entityType: 'User',
       entityId: user._id
     });
@@ -161,7 +161,7 @@ router.patch('/users/:id/approve', async (req, res, next) => {
  * @swagger
  * /admin/users/{id}/reject:
  *   patch:
- *     summary: Reject worker
+ *     summary: Reject promoter
  *     tags: [Admin - Users]
  *     security:
  *       - bearerAuth: []
@@ -189,7 +189,7 @@ router.patch('/users/:id/reject', async (req, res, next) => {
 
     await ActivityLog.create({
       userId: req.user._id,
-      action: 'WORKER_REJECTED',
+      action: 'PROMOTER_REJECTED',
       entityType: 'User',
       entityId: user._id
     });
@@ -562,13 +562,137 @@ router.get('/jobs/:id', async (req, res, next) => {
   }
 });
 
+/**
+ * @swagger
+ * /admin/jobs:
+ *   post:
+ *     summary: Create a new job directly (Admin)
+ *     tags: [Admin - Jobs]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *     responses:
+ *       201:
+ *         description: Job created
+ */
+router.post('/jobs', validate(schemas.createJob), async (req, res, next) => {
+  try {
+    const { startDate, endDate } = req.body;
+
+    if (new Date(startDate) >= new Date(endDate)) {
+      return res.status(400).json({ success: false, message: 'End date must be after start date' });
+    }
+
+    const job = await Job.create({
+      ...req.body,
+      status: 'OPEN', // Admins create open jobs by default
+      startDate: new Date(startDate),
+      endDate: new Date(endDate)
+    });
+
+    await ActivityLog.create({
+      userId: req.user._id,
+      action: 'JOB_CREATED_BY_ADMIN',
+      entityType: 'Job',
+      entityId: job._id
+    });
+
+    res.status(201).json({
+      success: true,
+      message: 'Job created and opened successfully',
+      data: job
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * @swagger
+ * /admin/jobs/{id}/approve:
+ *   patch:
+ *     summary: Approve a client job
+ *     tags: [Admin - Jobs]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Job approved
+ */
+router.patch('/jobs/:id/approve', async (req, res, next) => {
+  try {
+    const job = await Job.findById(req.params.id);
+    if (!job) {
+      return res.status(404).json({ success: false, message: 'Job not found' });
+    }
+
+    job.status = 'OPEN';
+    await job.save();
+
+    await ActivityLog.create({
+      userId: req.user._id,
+      action: 'JOB_APPROVED',
+      entityType: 'Job',
+      entityId: job._id
+    });
+
+    res.json({
+      success: true,
+      message: 'Job approved and is now open',
+      data: job
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * @swagger
+ * /admin/jobs/{id}/reject:
+ *   patch:
+ *     summary: Reject a client job
+ *     tags: [Admin - Jobs]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Job rejected
+ */
+router.patch('/jobs/:id/reject', async (req, res, next) => {
+  try {
+    const job = await Job.findById(req.params.id);
+    if (!job) {
+      return res.status(404).json({ success: false, message: 'Job not found' });
+    }
+
+    job.status = 'CANCELLED';
+    await job.save();
+
+    await ActivityLog.create({
+      userId: req.user._id,
+      action: 'JOB_REJECTED',
+      entityType: 'Job',
+      entityId: job._id
+    });
+
+    res.json({
+      success: true,
+      message: 'Job has been rejected',
+      data: job
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 // ============ ASSIGNMENTS ============
 
 /**
  * @swagger
  * /admin/assignments:
  *   post:
- *     summary: Assign workers to a job
+ *     summary: Assign promoters to a job
  *     tags: [Admin - Assignments]
  *     security:
  *       - bearerAuth: []
@@ -580,7 +704,7 @@ router.get('/jobs/:id', async (req, res, next) => {
  *             type: object
  *             required: [userIds, jobId]
  *             example:
- *               userIds: ["_worker_id_1", "_worker_id_2"]
+ *               userIds: ["_promoter_id_1", "_promoter_id_2"]
  *               jobId: _job_id_
  *     responses:
  *       201:
@@ -601,12 +725,12 @@ router.post('/assignments', validate(schemas.assignWorker), async (req, res, nex
 
     const validWorkers = await User.find({
       _id: { $in: userIds },
-      role: 'WORKER',
+      role: 'PROMOTER',
       isApproved: true
     });
 
     if (validWorkers.length === 0) {
-      return res.status(400).json({ success: false, message: 'No valid approved workers found' });
+      return res.status(400).json({ success: false, message: 'No valid approved promoters found' });
     }
 
     const existingAssignments = await Assignment.find({
@@ -617,8 +741,8 @@ router.post('/assignments', validate(schemas.assignWorker), async (req, res, nex
     const existingUserIds = existingAssignments.map(a => a.userId.toString());
     const newAssignments = validWorkers
       .filter(w => !existingUserIds.includes(w._id.toString()))
-      .map(worker => ({
-        userId: worker._id,
+      .map(promoter => ({
+        userId: promoter._id,
         jobId,
         assignedBy: req.user._id,
         status: 'PENDING'
@@ -630,7 +754,7 @@ router.post('/assignments', validate(schemas.assignWorker), async (req, res, nex
 
     await ActivityLog.create({
       userId: req.user._id,
-      action: 'WORKERS_ASSIGNED',
+      action: 'PROMOTERS_ASSIGNED',
       entityType: 'Job',
       entityId: jobId,
       details: { assignedCount: newAssignments.length }
@@ -638,7 +762,7 @@ router.post('/assignments', validate(schemas.assignWorker), async (req, res, nex
 
     res.status(201).json({
       success: true,
-      message: `${newAssignments.length} worker(s) assigned successfully`,
+      message: `${newAssignments.length} promoter(s) assigned successfully`,
       data: { assigned: newAssignments.length }
     });
   } catch (error) {

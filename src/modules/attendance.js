@@ -100,8 +100,8 @@ router.post('/check-in', auth, validate(schemas.checkIn), async (req, res, next)
     const { jobId, location } = req.body;
     const userId = req.user._id;
 
-    if (req.user.role !== 'WORKER') {
-      return res.status(403).json({ success: false, message: 'Only workers can check in' });
+    if (req.user.role !== 'PROMOTER') {
+      return res.status(403).json({ success: false, message: 'Only promoters can check in' });
     }
 
     if (!req.user.isApproved) {
@@ -225,9 +225,9 @@ router.post('/check-in', auth, validate(schemas.checkIn), async (req, res, next)
         timestamp: new Date().toISOString()
       };
 
-      socketManager.emitToRole('ADMIN', 'worker:check-in', eventData);
-      socketManager.emitToRole('SUPER_ADMIN', 'worker:check-in', eventData);
-      socketManager.emitToRole('CLIENT', 'worker:check-in', eventData);
+      socketManager.emitToRole('ADMIN', 'promoter:check-in', eventData);
+      socketManager.emitToRole('SUPER_ADMIN', 'promoter:check-in', eventData);
+      socketManager.emitToRole('CLIENT', 'promoter:check-in', eventData);
 
       const clientUsers = await User.find({ role: 'CLIENT', isApproved: true });
       for (const client of clientUsers) {
@@ -306,8 +306,8 @@ router.post('/check-out', auth, validate(schemas.checkOut), async (req, res, nex
     const { jobId, location } = req.body;
     const userId = req.user._id;
 
-    if (req.user.role !== 'WORKER') {
-      return res.status(403).json({ success: false, message: 'Only workers can check out' });
+    if (req.user.role !== 'PROMOTER') {
+      return res.status(403).json({ success: false, message: 'Only promoters can check out' });
     }
 
     const today = new Date();
@@ -375,8 +375,8 @@ router.post('/check-out', auth, validate(schemas.checkOut), async (req, res, nex
         timestamp: new Date().toISOString()
       };
 
-      socketManager.emitToRole('ADMIN', 'worker:check-out', eventData);
-      socketManager.emitToRole('SUPER_ADMIN', 'worker:check-out', eventData);
+      socketManager.emitToRole('ADMIN', 'promoter:check-out', eventData);
+      socketManager.emitToRole('SUPER_ADMIN', 'promoter:check-out', eventData);
     }
 
     res.json({
@@ -442,7 +442,7 @@ router.get('/user/:userId', auth, async (req, res, next) => {
     const targetUserId = req.params.userId;
     const { jobId, startDate, endDate, page = 1, limit = 20 } = req.query;
 
-    if (req.user.role === 'WORKER' && req.user._id.toString() !== targetUserId) {
+    if (req.user.role === 'PROMOTER' && req.user._id.toString() !== targetUserId) {
       return res.status(403).json({ success: false, message: 'Access denied' });
     }
 
@@ -494,8 +494,8 @@ router.get('/user/:userId', auth, async (req, res, next) => {
  */
 router.get('/today', auth, async (req, res, next) => {
   try {
-    if (req.user.role !== 'WORKER') {
-      return res.status(403).json({ success: false, message: 'Only workers can access this endpoint' });
+    if (req.user.role !== 'PROMOTER') {
+      return res.status(403).json({ success: false, message: 'Only promoters can access this endpoint' });
     }
 
     const today = new Date();
@@ -545,7 +545,7 @@ router.get('/:id', auth, async (req, res, next) => {
       return res.status(404).json({ success: false, message: 'Attendance record not found' });
     }
 
-    if (req.user.role === 'WORKER' && attendance.userId._id.toString() !== req.user._id.toString()) {
+    if (req.user.role === 'PROMOTER' && attendance.userId._id.toString() !== req.user._id.toString()) {
       return res.status(403).json({ success: false, message: 'Access denied' });
     }
 

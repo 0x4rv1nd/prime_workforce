@@ -19,7 +19,7 @@ const router = Router();
  *         name: role
  *         schema:
  *           type: string
- *           enum: [ADMIN, CLIENT, WORKER]
+ *           enum: [ADMIN, CLIENT, PROMOTER]
  *       - in: query
  *         name: isApproved
  *         schema:

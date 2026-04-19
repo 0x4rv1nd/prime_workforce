@@ -8,12 +8,12 @@ import { auth, authorize } from '../middlewares/auth.js';
 
 const router = Router();
 
-router.get('/worker/:workerId', auth, async (req, res, next) => {
+router.get('/promoter/:promoterId', auth, async (req, res, next) => {
   try {
     const { startDate, endDate } = req.query;
-    const workerId = req.params.workerId;
+    const promoterId = req.params.promoterId;
 
-    const filter = { userId: workerId };
+    const filter = { userId: promoterId };
     if (startDate || endDate) {
       filter.date = {};
       if (startDate) filter.date.$gte = new Date(startDate);
@@ -29,7 +29,7 @@ router.get('/worker/:workerId', auth, async (req, res, next) => {
     res.json({
       success: true,
       data: {
-        workerId,
+        promoterId,
         totalHours: Math.round(totalHours * 100) / 100,
         daysWorked,
         daysPresent,
@@ -114,7 +114,7 @@ router.get('/job/:jobId', auth, async (req, res, next) => {
     const presentDays = attendances.filter(att => att.status === 'PRESENT').length;
     const absentDays = attendances.filter(att => att.status === 'ABSENT').length;
 
-    const workers = assignments.map(a => ({
+    const promoters = assignments.map(a => ({
       id: a.userId._id,
       name: a.userId.name,
       email: a.userId.email,
@@ -136,7 +136,7 @@ router.get('/job/:jobId', auth, async (req, res, next) => {
         daysWorked,
         presentDays,
         absentDays,
-        workers
+        promoters
       }
     });
   } catch (error) {
@@ -161,8 +161,8 @@ router.get('/summary', auth, authorize('ADMIN', 'SUPER_ADMIN'), async (req, res,
       completedJobs,
       totalAttendances
     ] = await Promise.all([
-      User.countDocuments({ role: 'WORKER' }),
-      User.countDocuments({ role: 'WORKER', isApproved: true }),
+      User.countDocuments({ role: 'PROMOTER' }),
+      User.countDocuments({ role: 'PROMOTER', isApproved: true }),
       Client.countDocuments(),
       Job.countDocuments(dateFilter.start ? { createdAt: dateFilter } : {}),
       Job.countDocuments({ status: 'ACTIVE' }),
@@ -179,7 +179,7 @@ router.get('/summary', auth, authorize('ADMIN', 'SUPER_ADMIN'), async (req, res,
     res.json({
       success: true,
       data: {
-        workers: { total: totalWorkers, active: activeWorkers },
+        promoters: { total: totalWorkers, active: activeWorkers },
         clients: { total: totalClients },
         jobs: { total: totalJobs, active: activeJobs, completed: completedJobs },
         attendance: { total: totalAttendances, totalHours: Math.round(totalHours * 100) / 100 }

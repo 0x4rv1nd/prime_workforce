@@ -12,8 +12,8 @@ const userSchema = new mongoose.Schema({
   password: { type: String, required: true, minlength: 6 },
   role: { 
     type: String, 
-    enum: ['SUPER_ADMIN', 'ADMIN', 'CLIENT', 'WORKER'], 
-    default: 'WORKER',
+    enum: ['SUPER_ADMIN', 'ADMIN', 'CLIENT', 'PROMOTER'], 
+    default: 'PROMOTER',
     index: true 
   },
   isApproved: { type: Boolean, default: false, index: true },
