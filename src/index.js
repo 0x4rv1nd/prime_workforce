@@ -15,7 +15,11 @@ const app = express();
 const httpServer = createServer(app);
 
 app.use(securityMiddleware);
-app.use(cors());
+
+const corsOrigin = process.env.CORS_ORIGIN
+  ? process.env.CORS_ORIGIN.split(',')
+  : '*';
+app.use(cors({ origin: corsOrigin, credentials: true }));
 app.use(express.json({ limit: '10kb' }));
 app.use(express.urlencoded({ extended: true, limit: '10kb' }));
 
@@ -42,6 +46,9 @@ const swaggerOptions = {
       description: 'Workforce Management System API - Production Grade'
     },
     servers: [
+      ...(process.env.RENDER_EXTERNAL_URL
+        ? [{ url: `${process.env.RENDER_EXTERNAL_URL}/api/v1`, description: 'Production server' }]
+        : []),
       {
         url: `http://localhost:${process.env.PORT || 5000}/api/v1`,
         description: 'Development server'
@@ -99,8 +106,8 @@ const PORT = process.env.PORT || 5000;
 
 const startServer = async () => {
   await connectDB();
-  httpServer.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
+  httpServer.listen(PORT, '0.0.0.0', () => {
+    console.log(`[${process.env.NODE_ENV || 'development'}] Server running on port ${PORT}`);
     console.log(`API Base: http://localhost:${PORT}/api/v1`);
     console.log(`Swagger docs: http://localhost:${PORT}/api-docs`);
     console.log(`Socket.IO: ws://localhost:${PORT}`);
