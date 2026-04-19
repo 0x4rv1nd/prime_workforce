@@ -32,7 +32,8 @@ const attendanceSchema = new mongoose.Schema({
       address: { type: String }
     },
     verified: { type: Boolean, default: false },
-    notes: { type: String }
+    notes: { type: String },
+    status: { type: String, enum: ['ON_TIME', 'LATE', 'VERY_LATE'], default: 'ON_TIME' }
   },
   checkOut: {
     time: { type: Date },
@@ -42,7 +43,8 @@ const attendanceSchema = new mongoose.Schema({
       address: { type: String }
     },
     verified: { type: Boolean, default: false },
-    notes: { type: String }
+    notes: { type: String },
+    status: { type: String, enum: ['ON_TIME', 'EARLY_LEAVE', 'OVERTIME'], default: 'ON_TIME' }
   },
   totalHours: { type: Number, default: 0 },
   status: { 
@@ -52,7 +54,7 @@ const attendanceSchema = new mongoose.Schema({
     index: true 
   },
   overtime: { type: Number, default: 0 },
-  breakDuration: { type: Number, default: 0 } // in minutes
+  breakDuration: { type: Number, default: 0 }
 }, {
   timestamps: true
 });
@@ -60,5 +62,6 @@ const attendanceSchema = new mongoose.Schema({
 attendanceSchema.index({ userId: 1, date: 1 }, { unique: true });
 attendanceSchema.index({ jobId: 1, date: 1 });
 attendanceSchema.index({ assignmentId: 1 });
+attendanceSchema.index({ userId: 1, jobId: 1 });
 
 export const Attendance = mongoose.model('Attendance', attendanceSchema);

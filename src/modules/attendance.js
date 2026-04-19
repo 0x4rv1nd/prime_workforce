@@ -8,6 +8,20 @@ import { validate, schemas } from '../middlewares/validation.js';
 
 const router = Router();
 
+const idempotencyStore = new Map();
+
+const checkIdempotency = (key, res) => {
+  if (idempotencyStore.has(key)) {
+    return { used: true, response: idempotencyStore.get(key) };
+  }
+  return { used: false };
+};
+
+const setIdempotency = (key, response) => {
+  idempotencyStore.set(key, response);
+  setTimeout(() => idempotencyStore.delete(key), 300000);
+};
+
 const calculateDistance = (lat1, lng1, lat2, lng2) => {
   const R = 6371000;
   const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -23,6 +37,22 @@ const isWithinGeofence = (userLat, userLng, jobLocation, radius = 500) => {
   if (!jobLocation || !jobLocation.lat || !jobLocation.lng) return true;
   const distance = calculateDistance(userLat, userLng, jobLocation.lat, jobLocation.lng);
   return distance <= radius;
+};
+
+const determineAttendanceStatus = (checkInTime, shiftStart) => {
+  if (!shiftStart) return 'ON_TIME';
+  const [hours, minutes] = shiftStart.split(':').map(Number);
+  const expectedTime = new Date();
+  expectedTime.setHours(hours, minutes, 0, 0);
+  
+  const checkIn = new Date(checkInTime);
+  const diffMinutes = (checkIn - expectedTime) / (1000 * 60);
+  
+  if (diffMinutes > 0) {
+    if (diffMinutes <= 15) return 'LATE';
+    return 'VERY_LATE';
+  }
+  return 'ON_TIME';
 };
 
 /**
@@ -78,7 +108,7 @@ router.post('/check-in', auth, validate(schemas.checkIn), async (req, res, next)
     const assignment = await Assignment.findOne({
       userId,
       jobId,
-      status: { $in: ['PENDING', 'ACTIVE'] }
+      status: 'ACTIVE'
     });
 
     if (!assignment) {
@@ -88,6 +118,24 @@ router.post('/check-in', auth, validate(schemas.checkIn), async (req, res, next)
     const job = await Job.findById(jobId);
     if (!job) {
       return res.status(404).json({ success: false, message: 'Job not found' });
+    }
+
+    if (job.status !== 'ACTIVE') {
+      return res.status(400).json({ success: false, message: 'Job is not active' });
+    }
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const jobStartDate = new Date(job.startDate);
+    jobStartDate.setHours(0, 0, 0, 0);
+    const jobEndDate = new Date(job.endDate);
+    jobEndDate.setHours(23, 59, 59, 999);
+
+    if (today < jobStartDate || today > jobEndDate) {
+      return res.status(400).json({ 
+        success: false, 
+        message: `Job is scheduled from ${job.startDate.toDateString()} to ${job.endDate.toDateString()}. Cannot check in today.`
+      });
     }
 
     const jobLocation = job.location;

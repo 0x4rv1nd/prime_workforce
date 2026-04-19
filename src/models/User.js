@@ -17,8 +17,10 @@ const userSchema = new mongoose.Schema({
     index: true 
   },
   isApproved: { type: Boolean, default: false, index: true },
+  isDeleted: { type: Boolean, default: false, index: true },
   phone: { type: String, trim: true },
   profileImage: { type: String },
+  deletedAt: { type: Date },
   createdAt: { type: Date, default: Date.now, index: true },
   updatedAt: { type: Date, default: Date.now }
 }, {
@@ -29,5 +31,13 @@ const userSchema = new mongoose.Schema({
 
 userSchema.index({ role: 1, isApproved: 1 });
 userSchema.index({ createdAt: -1 });
+
+userSchema.pre('find', function() {
+  this.where({ isDeleted: false });
+});
+
+userSchema.pre('findOne', function() {
+  this.where({ isDeleted: false });
+});
 
 export const User = mongoose.model('User', userSchema);

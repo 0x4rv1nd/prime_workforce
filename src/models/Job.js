@@ -7,7 +7,7 @@ const jobSchema = new mongoose.Schema({
     address: { type: String },
     lat: { type: Number, required: true },
     lng: { type: Number, required: true },
-    radius: { type: Number, default: 500 } // Geofencing radius in meters
+    radius: { type: Number, default: 500 }
   },
   clientId: { 
     type: mongoose.Schema.Types.ObjectId, 
@@ -30,6 +30,8 @@ const jobSchema = new mongoose.Schema({
   },
   requiredWorkers: { type: Number, default: 1, min: 1 },
   skills: [{ type: String, trim: true }],
+  isDeleted: { type: Boolean, default: false, index: true },
+  deletedAt: { type: Date },
   createdAt: { type: Date, default: Date.now, index: true },
   updatedAt: { type: Date, default: Date.now }
 }, {
@@ -39,5 +41,13 @@ const jobSchema = new mongoose.Schema({
 jobSchema.index({ clientId: 1, status: 1 });
 jobSchema.index({ startDate: 1, endDate: 1 });
 jobSchema.index({ title: 'text', description: 'text' });
+
+jobSchema.pre('find', function() {
+  this.where({ isDeleted: false });
+});
+
+jobSchema.pre('findOne', function() {
+  this.where({ isDeleted: false });
+});
 
 export const Job = mongoose.model('Job', jobSchema);

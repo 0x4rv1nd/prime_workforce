@@ -18,6 +18,8 @@ const clientSchema = new mongoose.Schema({
     country: String
   },
   industry: { type: String, trim: true },
+  isDeleted: { type: Boolean, default: false, index: true },
+  deletedAt: { type: Date },
   createdAt: { type: Date, default: Date.now, index: true },
   updatedAt: { type: Date, default: Date.now }
 }, {
@@ -26,5 +28,13 @@ const clientSchema = new mongoose.Schema({
 
 clientSchema.index({ companyName: 'text' });
 clientSchema.index({ contactEmail: 1 }, { unique: true });
+
+clientSchema.pre('find', function() {
+  this.where({ isDeleted: false });
+});
+
+clientSchema.pre('findOne', function() {
+  this.where({ isDeleted: false });
+});
 
 export const Client = mongoose.model('Client', clientSchema);

@@ -2,11 +2,21 @@ import { Router } from 'express';
 import { Assignment } from '../models/Assignment.js';
 import { Job } from '../models/Job.js';
 import { User } from '../models/User.js';
+import { Availability } from '../models/Availability.js';
 import { auth, authorize } from '../middlewares/auth.js';
 import { ActivityLog } from '../models/ActivityLog.js';
 import { validate, schemas } from '../middlewares/validation.js';
 
 const router = Router();
+
+async function checkWorkerAvailability(workerId, jobStartDate, jobEndDate) {
+  const availabilities = await Availability.find({
+    userId: workerId,
+    date: { $gte: jobStartDate, $lte: jobEndDate },
+    isAvailable: false
+  });
+  return availabilities.length === 0;
+}
 
 /**
  * @swagger
@@ -65,14 +75,35 @@ router.post('/', auth, authorize('ADMIN', 'SUPER_ADMIN'), validate(schemas.assig
     });
 
     const existingUserIds = existingAssignments.map(a => a.userId.toString());
-    const newAssignments = validWorkers
-      .filter(w => !existingUserIds.includes(w._id.toString()))
-      .map(worker => ({
-        userId: worker._id,
-        jobId,
-        assignedBy: req.user._id,
-        status: 'PENDING'
-      }));
+    
+    const unavailableWorkers = [];
+    const availableWorkers = [];
+    
+    for (const worker of validWorkers) {
+      if (existingUserIds.includes(worker._id.toString())) {
+        continue;
+      }
+      const isAvailable = await checkWorkerAvailability(worker._id, job.startDate, job.endDate);
+      if (!isAvailable) {
+        unavailableWorkers.push(worker.name);
+      } else {
+        availableWorkers.push(worker);
+      }
+    }
+
+    if (unavailableWorkers.length > 0) {
+      return res.status(400).json({ 
+        success: false, 
+        message: `Workers not available during job dates: ${unavailableWorkers.join(', ')}` 
+      });
+    }
+
+    const newAssignments = availableWorkers.map(worker => ({
+      userId: worker._id,
+      jobId,
+      assignedBy: req.user._id,
+      status: 'PENDING'
+    }));
 
     if (newAssignments.length > 0) {
       await Assignment.insertMany(newAssignments);

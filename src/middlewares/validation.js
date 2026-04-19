@@ -1,8 +1,31 @@
 import { z } from 'zod';
 
+const sanitizeString = (str) => {
+  if (typeof str !== 'string') return str;
+  return str.replace(/[${}\\"]/g, '').trim();
+};
+
+const sanitizeObject = (obj) => {
+  if (typeof obj !== 'object' || obj === null) return obj;
+  const sanitized = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (typeof value === 'string') {
+      sanitized[key] = sanitizeString(value);
+    } else if (typeof value === 'object' && value !== null) {
+      sanitized[key] = sanitizeObject(value);
+    } else {
+      sanitized[key] = value;
+    }
+  }
+  return sanitized;
+};
+
 export const validate = (schema) => {
   return (req, res, next) => {
     try {
+      if (req.body && typeof req.body === 'object') {
+        req.body = sanitizeObject(req.body);
+      }
       schema.parse(req.body);
       next();
     } catch (error) {

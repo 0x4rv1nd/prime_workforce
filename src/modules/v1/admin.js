@@ -224,12 +224,16 @@ router.patch('/users/:id/reject', async (req, res, next) => {
  *       404:
  *         description: User not found
  */
-router.delete('/users/:id', async (req, res, next) => {
+router.delete('/users/:id', auth, authorize('ADMIN', 'SUPER_ADMIN'), async (req, res, next) => {
   try {
-    const user = await User.findByIdAndDelete(req.params.id);
+    const user = await User.findById(req.params.id);
     if (!user) {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
+
+    user.isDeleted = true;
+    user.deletedAt = new Date();
+    await user.save();
 
     await ActivityLog.create({
       userId: req.user._id,
