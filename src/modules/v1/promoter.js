@@ -3,6 +3,8 @@ import { Job } from '../../models/Job.js';
 import { Assignment } from '../../models/Assignment.js';
 import { Attendance } from '../../models/Attendance.js';
 import { Availability } from '../../models/Availability.js';
+import { JobApplication } from '../../models/JobApplication.js';
+import { Payment } from '../../models/Payment.js';
 import { auth, authorize } from '../../middlewares/auth.js';
 import { ActivityLog } from '../../models/ActivityLog.js';
 import { validate, schemas } from '../../middlewares/validation.js';
@@ -52,6 +54,67 @@ router.get('/profile', async (req, res, next) => {
         phone: req.user.phone,
         role: req.user.role,
         isApproved: req.user.isApproved
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * @swagger
+ * /promoter/dashboard-stats:
+ *   get:
+ *     summary: Get promoter dashboard statistics
+ *     tags: [Worker - Profile]
+ *     security:
+ *       - bearerAuth: []
+ */
+router.get('/dashboard-stats', async (req, res, next) => {
+  try {
+    const userId = req.user._id;
+
+    // 1. Next Shift
+    const assignments = await Assignment.find({
+      userId,
+      status: { $in: ['PENDING', 'ACTIVE'] }
+    }).populate({
+      path: 'jobId',
+      populate: { path: 'clientId', select: 'companyName' }
+    });
+    
+    const now = new Date();
+    const nextShiftRecord = assignments
+      .filter(a => a.jobId && new Date(a.jobId.startDate) >= new Date(now.setHours(0,0,0,0)))
+      .sort((a, b) => new Date(a.jobId.startDate) - new Date(b.jobId.startDate))[0];
+
+    // 2. Hours this week
+    const startOfWeek = new Date();
+    startOfWeek.setDate(startOfWeek.getDate() - 7);
+    const attendance = await Attendance.find({
+      userId,
+      date: { $gte: startOfWeek }
+    });
+    const hoursThisWeek = attendance.reduce((sum, record) => sum + (record.totalHours || 0), 0);
+
+    // 3. Pending Payout
+    const payments = await Payment.find({
+      userId,
+      status: 'PENDING'
+    });
+    const pendingPayout = payments.reduce((sum, p) => sum + p.amount, 0);
+
+    res.json({
+      success: true,
+      data: {
+        nextShift: nextShiftRecord ? {
+          title: nextShiftRecord.jobId.title,
+          startDate: nextShiftRecord.jobId.startDate,
+          location: nextShiftRecord.jobId.location,
+          companyName: nextShiftRecord.jobId.clientId?.companyName || 'Private Client'
+        } : null,
+        hoursThisWeek: parseFloat(hoursThisWeek.toFixed(1)),
+        pendingPayout: parseFloat(pendingPayout.toFixed(2))
       }
     });
   } catch (error) {
@@ -498,8 +561,6 @@ router.get('/attendance', async (req, res, next) => {
 
 // ============ JOB APPLICATIONS ============
 
-import { JobApplication } from '../../models/JobApplication.js';
-
 /**
  * @swagger
  * /promoter/available-jobs:
@@ -512,7 +573,7 @@ import { JobApplication } from '../../models/JobApplication.js';
 router.get('/available-jobs', async (req, res, next) => {
   try {
     // Only show jobs in future or active, not fully staffed (optional logic)
-    const jobs = await Job.find({ status: 'ACTIVE' }).sort({ startDate: 1 });
+    const jobs = await Job.find({ status: { $in: ['OPEN', 'ACTIVE'] } }).sort({ startDate: 1 });
     // Maybe also populate whether they applied already
     const myApplications = await JobApplication.find({ userId: req.user._id });
     const appliedJobIds = myApplications.map(app => app.jobId.toString());
@@ -572,8 +633,6 @@ router.post('/apply/:jobId', async (req, res, next) => {
 });
 
 // ============ EARNINGS ============
-
-import { Payment } from '../../models/Payment.js';
 
 /**
  * @swagger

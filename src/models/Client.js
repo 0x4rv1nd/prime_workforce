@@ -7,6 +7,11 @@ const clientSchema = new mongoose.Schema({
     required: true,
     unique: true 
   },
+  assignedAdminId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    index: true
+  },
   companyName: { type: String, required: true, trim: true, maxlength: 200 },
   contactEmail: { type: String, required: true, lowercase: true, trim: true },
   contactPhone: { type: String, trim: true },

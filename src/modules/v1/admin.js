@@ -79,6 +79,82 @@ router.get('/users', async (req, res, next) => {
 
 /**
  * @swagger
+ * /admin/stats:
+ *   get:
+ *     summary: Get system-wide statistics (Super Admin)
+ *     tags: [Admin - Stats]
+ *     security:
+ *       - bearerAuth: []
+ */
+router.get('/stats', async (req, res, next) => {
+  try {
+    const isSuperAdmin = req.user.role === 'SUPER_ADMIN';
+    const clientFilter = { isDeleted: false };
+    const jobFilter = { isDeleted: false };
+    const userFilter = { role: 'PROMOTER', isDeleted: false };
+    const approvalFilter = { role: 'PROMOTER', isApproved: false, isDeleted: false };
+    const attendanceFilter = {};
+
+    if (!isSuperAdmin) {
+      const assignedClients = await Client.find({ assignedAdminId: req.user._id }).select('_id');
+      const clientIds = assignedClients.map(c => c._id);
+      
+      clientFilter._id = { $in: clientIds };
+      jobFilter.clientId = { $in: clientIds };
+      
+      const assignedJobs = await Job.find({ clientId: { $in: clientIds } }).select('_id');
+      const jobIds = assignedJobs.map(j => j._id);
+      
+      const assignments = await Assignment.find({ jobId: { $in: jobIds } }).select('userId');
+      const assignedUserIds = [...new Set(assignments.map(a => a.userId.toString()))];
+      
+      userFilter._id = { $in: assignedUserIds };
+      approvalFilter._id = { $in: assignedUserIds };
+      attendanceFilter.jobId = { $in: jobIds };
+    }
+
+    const [
+      totalUsers,
+      totalAdmins,
+      totalWorkers,
+      totalClients,
+      activeJobs,
+      pendingApprovals,
+      clockedIn
+    ] = await Promise.all([
+      User.countDocuments({ isDeleted: false }),
+      User.countDocuments({ role: { $in: ['ADMIN', 'SUPER_ADMIN'] }, isDeleted: false }),
+      User.countDocuments(userFilter),
+      Client.countDocuments(clientFilter),
+      Job.countDocuments({ ...jobFilter, status: { $in: ['OPEN', 'ACTIVE'] } }),
+      User.countDocuments(approvalFilter),
+      Attendance.countDocuments({ ...attendanceFilter, 'checkIn.time': { $exists: true }, 'checkOut.time': { $exists: false } })
+    ]);
+
+    const results = {
+      users: totalUsers,
+      admins: totalAdmins,
+      workers: totalWorkers,
+      clients: totalClients,
+      activeJobs,
+      pendingApprovals,
+      clockedIn
+    };
+
+    console.log('Stats calculated:', results);
+
+    res.json({
+      success: true,
+      data: results
+    });
+  } catch (error) {
+    console.error('Stats error:', error);
+    next(error);
+  }
+});
+
+/**
+ * @swagger
  * /admin/users/{id}:
  *   get:
  *     summary: Get specific user
@@ -380,7 +456,7 @@ router.post('/admins', authorize('SUPER_ADMIN', 'ADMIN'), validate(schemas.creat
  */
 router.post('/clients', validate(schemas.createClient), async (req, res, next) => {
   try {
-    const { name, email, password, companyName, contactPhone, companyAddress, industry } = req.body;
+    const { name, email, password, companyName, contactPhone, companyAddress, industry, assignedAdminId } = req.body;
 
     const existingUser = await User.findOne({ email: email.toLowerCase() });
     if (existingUser) {
@@ -399,6 +475,7 @@ router.post('/clients', validate(schemas.createClient), async (req, res, next) =
 
     const client = await Client.create({
       userId: user._id,
+      assignedAdminId: assignedAdminId || (req.user.role === 'ADMIN' ? req.user._id : undefined),
       companyName,
       contactEmail: email.toLowerCase(),
       contactPhone,
@@ -443,13 +520,19 @@ router.get('/clients', async (req, res, next) => {
     const { page = 1, limit = 20 } = req.query;
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
-    const clients = await Client.find()
+    const filter = {};
+    if (req.user.role === 'ADMIN') {
+      filter.assignedAdminId = req.user._id;
+    }
+
+    const clients = await Client.find(filter)
       .populate('userId', 'name email phone')
+      .populate('assignedAdminId', 'name email')
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(parseInt(limit));
 
-    const total = await Client.countDocuments();
+    const total = await Client.countDocuments(filter);
 
     res.json({
       success: true,
@@ -491,6 +574,68 @@ router.get('/clients/:id', async (req, res, next) => {
   }
 });
 
+/**
+ * @swagger
+ * /admin/clients/{id}/assign-admin:
+ *   patch:
+ *     summary: Assign/Reassign an admin to a client
+ *     tags: [Admin - Clients]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [adminId]
+ *             properties:
+ *               adminId:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Admin assigned
+ */
+router.patch('/clients/:id/assign-admin', authorize('SUPER_ADMIN'), async (req, res, next) => {
+  try {
+    const { adminId } = req.body;
+    const client = await Client.findById(req.params.id);
+    if (!client) {
+      return res.status(404).json({ success: false, message: 'Client not found' });
+    }
+
+    const admin = await User.findOne({ _id: adminId, role: { $in: ['ADMIN', 'SUPER_ADMIN'] } });
+    if (!admin) {
+      return res.status(400).json({ success: false, message: 'Invalid admin ID' });
+    }
+
+    client.assignedAdminId = adminId;
+    await client.save();
+
+    await ActivityLog.create({
+      userId: req.user._id,
+      action: 'CLIENT_ADMIN_ASSIGNED',
+      entityType: 'Client',
+      entityId: client._id,
+      details: { adminId }
+    });
+
+    res.json({
+      success: true,
+      message: 'Admin assigned successfully',
+      data: client
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 // ============ JOBS ============
 
 /**
@@ -511,6 +656,12 @@ router.get('/jobs', async (req, res, next) => {
     const filter = {};
     
     if (status) filter.status = status;
+
+    if (req.user.role === 'ADMIN') {
+      const assignedClients = await Client.find({ assignedAdminId: req.user._id }).select('_id');
+      const clientIds = assignedClients.map(c => c._id);
+      filter.clientId = { $in: clientIds };
+    }
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
@@ -837,9 +988,16 @@ router.get('/reports/daily', async (req, res, next) => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    const attendance = await Attendance.find({
-      date: { $gte: today }
-    }).populate('userId', 'name').populate('jobId', 'title');
+    const filter = { date: { $gte: today } };
+    if (req.user.role === 'ADMIN') {
+      const assignedClients = await Client.find({ assignedAdminId: req.user._id }).select('_id');
+      const clientIds = assignedClients.map(c => c._id);
+      const assignedJobs = await Job.find({ clientId: { $in: clientIds } }).select('_id');
+      const jobIds = assignedJobs.map(j => j._id);
+      filter.jobId = { $in: jobIds };
+    }
+
+    const attendance = await Attendance.find(filter).populate('userId', 'name').populate('jobId', 'title');
 
     const totalCheckIns = attendance.filter(a => a.checkIn?.time).length;
     const totalHours = attendance.reduce((sum, a) => sum + (a.totalHours || 0), 0);
@@ -877,9 +1035,16 @@ router.get('/reports/weekly', async (req, res, next) => {
     const weekAgo = new Date(today);
     weekAgo.setDate(weekAgo.getDate() - 7);
 
-    const attendance = await Attendance.find({
-      date: { $gte: weekAgo }
-    }).populate('userId', 'name').populate('jobId', 'title');
+    const filter = { date: { $gte: weekAgo } };
+    if (req.user.role === 'ADMIN') {
+      const assignedClients = await Client.find({ assignedAdminId: req.user._id }).select('_id');
+      const clientIds = assignedClients.map(c => c._id);
+      const assignedJobs = await Job.find({ clientId: { $in: clientIds } }).select('_id');
+      const jobIds = assignedJobs.map(j => j._id);
+      filter.jobId = { $in: jobIds };
+    }
+
+    const attendance = await Attendance.find(filter).populate('userId', 'name').populate('jobId', 'title');
 
     const totalCheckIns = attendance.filter(a => a.checkIn?.time).length;
     const totalHours = attendance.reduce((sum, a) => sum + (a.totalHours || 0), 0);
@@ -918,9 +1083,16 @@ router.get('/reports/monthly', async (req, res, next) => {
     const monthAgo = new Date(today);
     monthAgo.setMonth(monthAgo.getMonth() - 1);
 
-    const attendance = await Attendance.find({
-      date: { $gte: monthAgo }
-    }).populate('userId', 'name').populate('jobId', 'title');
+    const filter = { date: { $gte: monthAgo } };
+    if (req.user.role === 'ADMIN') {
+      const assignedClients = await Client.find({ assignedAdminId: req.user._id }).select('_id');
+      const clientIds = assignedClients.map(c => c._id);
+      const assignedJobs = await Job.find({ clientId: { $in: clientIds } }).select('_id');
+      const jobIds = assignedJobs.map(j => j._id);
+      filter.jobId = { $in: jobIds };
+    }
+
+    const attendance = await Attendance.find(filter).populate('userId', 'name').populate('jobId', 'title');
 
     const totalCheckIns = attendance.filter(a => a.checkIn?.time).length;
     const totalHours = attendance.reduce((sum, a) => sum + (a.totalHours || 0), 0);
@@ -958,6 +1130,22 @@ router.get('/applications', async (req, res, next) => {
     const filter = {};
     if (req.query.jobId) {
       filter.jobId = req.query.jobId;
+    }
+
+    if (req.user.role === 'ADMIN') {
+      const assignedClients = await Client.find({ assignedAdminId: req.user._id }).select('_id');
+      const clientIds = assignedClients.map(c => c._id);
+      const assignedJobs = await Job.find({ clientId: { $in: clientIds } }).select('_id');
+      const jobIds = assignedJobs.map(j => j._id);
+      
+      if (filter.jobId) {
+        // If jobId is requested, check if it's in the allowed list
+        if (!jobIds.some(id => id.toString() === filter.jobId.toString())) {
+          return res.json({ success: true, data: [] });
+        }
+      } else {
+        filter.jobId = { $in: jobIds };
+      }
     }
     const applications = await JobApplication.find(filter)
       .populate('userId', 'name email phone')
@@ -1125,6 +1313,21 @@ router.get('/payments', async (req, res, next) => {
     const filter = {};
     if (status) filter.status = status;
     if (jobId) filter.jobId = jobId;
+
+    if (req.user.role === 'ADMIN') {
+      const assignedClients = await Client.find({ assignedAdminId: req.user._id }).select('_id');
+      const clientIds = assignedClients.map(c => c._id);
+      const assignedJobs = await Job.find({ clientId: { $in: clientIds } }).select('_id');
+      const jobIds = assignedJobs.map(j => j._id);
+      
+      if (filter.jobId) {
+        if (!jobIds.some(id => id.toString() === filter.jobId.toString())) {
+          return res.json({ success: true, data: [] });
+        }
+      } else {
+        filter.jobId = { $in: jobIds };
+      }
+    }
 
     const payments = await Payment.find(filter)
       .populate('userId', 'name email phone')
