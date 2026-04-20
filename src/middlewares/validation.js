@@ -112,14 +112,19 @@ export const schemas = {
   createJob: z.object({
     title: z.string().min(1).max(200),
     description: z.string().min(1).max(2000),
+    clientId: z.string().min(1, 'Client ID is required'),
     location: z.object({
       address: z.string().optional(),
-      lat: z.number(),
-      lng: z.number(),
-      radius: z.number().optional()
+      lat: z.number().optional(),
+      lng: z.number().optional(),
+      radius: z.number().optional(),
+      googleMapsLink: z.string().optional()
     }),
     startDate: z.string().datetime(),
     endDate: z.string().datetime(),
+    shiftStart: z.string().optional(),
+    shiftEnd: z.string().optional(),
+    dressCode: z.string().optional(),
     wage: z.object({
       amount: z.number().min(0),
       currency: z.string().optional(),

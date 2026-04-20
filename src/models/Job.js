@@ -5,10 +5,12 @@ const jobSchema = new mongoose.Schema({
   description: { type: String, required: true, maxlength: 2000 },
   location: {
     address: { type: String },
-    lat: { type: Number, required: true },
-    lng: { type: Number, required: true },
-    radius: { type: Number, default: 500 }
+    lat: { type: Number },
+    lng: { type: Number },
+    radius: { type: Number, default: 500 },
+    googleMapsLink: { type: String }
   },
+  dressCode: { type: String },
   clientId: { 
     type: mongoose.Schema.Types.ObjectId, 
     ref: 'Client', 
@@ -17,6 +19,8 @@ const jobSchema = new mongoose.Schema({
   },
   startDate: { type: Date, required: true, index: true },
   endDate: { type: Date, required: true },
+  shiftStart: { type: String, default: '09:00' }, // HH:mm format
+  shiftEnd: { type: String, default: '17:00' },   // HH:mm format
   status: { 
     type: String, 
     enum: ['PENDING', 'OPEN', 'ACTIVE', 'COMPLETED', 'CANCELLED'], 

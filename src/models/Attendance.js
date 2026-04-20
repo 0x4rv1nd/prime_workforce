@@ -54,7 +54,8 @@ const attendanceSchema = new mongoose.Schema({
     index: true 
   },
   overtime: { type: Number, default: 0 },
-  breakDuration: { type: Number, default: 0 }
+  breakDuration: { type: Number, default: 0 },
+  isAutoCheckout: { type: Boolean, default: false }
 }, {
   timestamps: true
 });

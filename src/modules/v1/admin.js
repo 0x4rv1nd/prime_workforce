@@ -120,7 +120,8 @@ router.get('/stats', async (req, res, next) => {
       totalClients,
       activeJobs,
       pendingApprovals,
-      clockedIn
+      clockedIn,
+      totalWorkersInJobs
     ] = await Promise.all([
       User.countDocuments({ isDeleted: false }),
       User.countDocuments({ role: { $in: ['ADMIN', 'SUPER_ADMIN'] }, isDeleted: false }),
@@ -128,7 +129,11 @@ router.get('/stats', async (req, res, next) => {
       Client.countDocuments(clientFilter),
       Job.countDocuments({ ...jobFilter, status: { $in: ['OPEN', 'ACTIVE'] } }),
       User.countDocuments(approvalFilter),
-      Attendance.countDocuments({ ...attendanceFilter, 'checkIn.time': { $exists: true }, 'checkOut.time': { $exists: false } })
+      Attendance.countDocuments({ ...attendanceFilter, 'checkIn.time': { $exists: true }, 'checkOut.time': { $exists: false } }),
+      Job.aggregate([
+        { $match: { ...jobFilter, status: { $in: ['OPEN', 'ACTIVE'] } } },
+        { $group: { _id: null, total: { $sum: '$requiredWorkers' } } }
+      ])
     ]);
 
     const results = {
@@ -138,7 +143,8 @@ router.get('/stats', async (req, res, next) => {
       clients: totalClients,
       activeJobs,
       pendingApprovals,
-      clockedIn
+      clockedIn,
+      totalWorkersInJobs: totalWorkersInJobs[0]?.total || 0
     };
 
     console.log('Stats calculated:', results);
@@ -688,6 +694,98 @@ router.get('/jobs', async (req, res, next) => {
   }
 });
 
+router.get('/jobs/today', async (req, res, next) => {
+  try {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    const filter = {
+      startDate: { $lt: tomorrow },
+      endDate: { $gte: today },
+      status: { $in: ['OPEN', 'ACTIVE'] }
+    };
+
+    if (req.user.role === 'ADMIN') {
+      const assignedClients = await Client.find({ assignedAdminId: req.user._id }).select('_id');
+      const clientIds = assignedClients.map(c => c._id);
+      filter.clientId = { $in: clientIds };
+    }
+
+    const jobs = await Job.find(filter)
+      .populate('clientId', 'companyName')
+      .sort({ shiftStart: 1 });
+
+    res.json({ success: true, data: jobs });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get('/jobs/upcoming', async (req, res, next) => {
+  try {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    tomorrow.setHours(0, 0, 0, 0);
+
+    const filter = {
+      startDate: { $gte: tomorrow },
+      status: { $in: ['OPEN', 'PENDING'] }
+    };
+
+    if (req.user.role === 'ADMIN') {
+      const assignedClients = await Client.find({ assignedAdminId: req.user._id }).select('_id');
+      const clientIds = assignedClients.map(c => c._id);
+      filter.clientId = { $in: clientIds };
+    }
+
+    const jobs = await Job.find(filter)
+      .populate('clientId', 'companyName')
+      .sort({ startDate: 1 })
+      .limit(20);
+
+    res.json({ success: true, data: jobs });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get('/jobs/by-date', async (req, res, next) => {
+  try {
+    const { date } = req.query;
+    
+    if (!date) {
+      return res.status(400).json({ success: false, message: 'Date parameter is required (YYYY-MM-DD)' });
+    }
+
+    const targetDate = new Date(date);
+    targetDate.setHours(0, 0, 0, 0);
+    
+    const nextDate = new Date(targetDate);
+    nextDate.setDate(nextDate.getDate() + 1);
+
+    const filter = {
+      startDate: { $lt: nextDate },
+      endDate: { $gte: targetDate }
+    };
+
+    if (req.user.role === 'ADMIN') {
+      const assignedClients = await Client.find({ assignedAdminId: req.user._id }).select('_id');
+      const clientIds = assignedClients.map(c => c._id);
+      filter.clientId = { $in: clientIds };
+    }
+
+    const jobs = await Job.find(filter)
+      .populate('clientId', 'companyName')
+      .sort({ shiftStart: 1 });
+
+    res.json({ success: true, data: jobs });
+  } catch (error) {
+    next(error);
+  }
+});
+
 /**
  * @swagger
  * /admin/jobs/{id}:
@@ -707,7 +805,10 @@ router.get('/jobs/:id', async (req, res, next) => {
       return res.status(404).json({ success: false, message: 'Job not found' });
     }
 
-    res.json({ success: true, data: job });
+    const assignments = await Assignment.find({ jobId: req.params.id })
+      .populate('userId', 'name email role profile');
+
+    res.json({ success: true, data: { ...job.toObject(), assignments } });
   } catch (error) {
     next(error);
   }
@@ -832,6 +933,40 @@ router.patch('/jobs/:id/reject', async (req, res, next) => {
       message: 'Job has been rejected',
       data: job
     });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ============ WORKER MANAGEMENT ============
+
+/**
+ * @swagger
+ * /admin/promoters/{id}/approve:
+ *   patch:
+ *     summary: Approve a worker profile
+ *     tags: [Admin - Workers]
+ *     security:
+ *       - bearerAuth: []
+ */
+router.patch('/promoters/:id/approve', async (req, res, next) => {
+  try {
+    const user = await User.findById(req.params.id);
+    if (!user || user.role !== 'PROMOTER') {
+      return res.status(404).json({ success: false, message: 'Worker not found' });
+    }
+
+    user.isApproved = true;
+    await user.save();
+
+    await ActivityLog.create({
+      userId: req.user._id,
+      action: 'WORKER_APPROVED',
+      entityType: 'User',
+      entityId: user._id
+    });
+
+    res.json({ success: true, message: 'Worker profile has been approved' });
   } catch (error) {
     next(error);
   }
@@ -1169,9 +1304,28 @@ router.get('/applications', async (req, res, next) => {
  */
 router.patch('/applications/:id/approve', async (req, res, next) => {
   try {
-    const application = await JobApplication.findById(req.params.id);
+    const application = await JobApplication.findById(req.params.id).populate('userId');
     if (!application) {
       return res.status(404).json({ success: false, message: 'Application not found' });
+    }
+
+    if (!application.userId) {
+        return res.status(400).json({ success: false, message: 'Associated user not found for this application' });
+    }
+
+    // Check if worker profile is approved
+    if (!application.userId.isApproved) {
+      return res.status(400).json({ success: false, message: 'Worker profile must be approved by admin before job assignment' });
+    }
+
+    // Check staffing limit
+    const job = await Job.findById(application.jobId);
+    if (!job) return res.status(404).json({ success: false, message: 'Job not found' });
+
+    const confirmedCount = await Assignment.countDocuments({ jobId: application.jobId, status: { $in: ['PENDING', 'ACTIVE', 'COMPLETED'] } });
+    
+    if (confirmedCount >= (job.requiredWorkers || 1)) {
+      return res.status(400).json({ success: false, message: 'Job is already fully staffed' });
     }
 
     application.status = 'APPROVED';
@@ -1179,11 +1333,17 @@ router.patch('/applications/:id/approve', async (req, res, next) => {
 
     // Create Assignment
     const assignment = await Assignment.create({
-      userId: application.userId,
+      userId: application.userId._id,
       jobId: application.jobId,
       assignedBy: req.user._id,
       status: 'PENDING'
     });
+
+    // If fully staffed now, mark job as ACTIVE (optional, but good for UX)
+    if (confirmedCount + 1 >= (job.requiredWorkers || 1)) {
+      job.status = 'ACTIVE';
+      await job.save();
+    }
 
     res.json({ success: true, message: 'Application approved and assignment created', data: { application, assignment } });
   } catch (error) {

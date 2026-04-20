@@ -74,7 +74,62 @@ router.get('/dashboard-stats', async (req, res, next) => {
   try {
     const userId = req.user._id;
 
-    // 1. Next Shift
+    // 1. Today's Active Shift (for check-in/check-out)
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    const todayAssignment = await Assignment.findOne({
+      userId,
+      status: 'ACTIVE'
+    }).populate({
+      path: 'jobId',
+      populate: { path: 'clientId', select: 'companyName' }
+    });
+
+    let todayShift = null;
+    let attendanceStatus = null;
+
+    if (todayAssignment?.jobId) {
+      const job = todayAssignment.jobId;
+      const jobStart = new Date(job.startDate);
+      const jobEnd = new Date(job.endDate);
+
+      if (jobStart < tomorrow && jobEnd >= today) {
+        const attendance = await Attendance.findOne({
+          userId,
+          jobId: job._id,
+          date: { $gte: today, $lt: tomorrow }
+        });
+
+        todayShift = {
+          _id: job._id,
+          title: job.title,
+          startDate: job.startDate,
+          endDate: job.endDate,
+          shiftStart: job.shiftStart,
+          shiftEnd: job.shiftEnd,
+          location: job.location,
+          companyName: job.clientId?.companyName || 'Private Client',
+          requiredWorkers: job.requiredWorkers
+        };
+
+        if (attendance) {
+          if (attendance.checkIn?.time && !attendance.checkOut?.time) {
+            attendanceStatus = 'CHECKED_IN';
+          } else if (attendance.checkIn?.time && attendance.checkOut?.time) {
+            attendanceStatus = 'COMPLETED';
+          } else {
+            attendanceStatus = 'NOT_CHECKED_IN';
+          }
+        } else {
+          attendanceStatus = 'NOT_CHECKED_IN';
+        }
+      }
+    }
+
+    // 2. Next Shift (for display)
     const assignments = await Assignment.find({
       userId,
       status: { $in: ['PENDING', 'ACTIVE'] }
@@ -88,16 +143,16 @@ router.get('/dashboard-stats', async (req, res, next) => {
       .filter(a => a.jobId && new Date(a.jobId.startDate) >= new Date(now.setHours(0,0,0,0)))
       .sort((a, b) => new Date(a.jobId.startDate) - new Date(b.jobId.startDate))[0];
 
-    // 2. Hours this week
+    // 3. Hours this week
     const startOfWeek = new Date();
     startOfWeek.setDate(startOfWeek.getDate() - 7);
-    const attendance = await Attendance.find({
+    const attendanceWeek = await Attendance.find({
       userId,
       date: { $gte: startOfWeek }
     });
-    const hoursThisWeek = attendance.reduce((sum, record) => sum + (record.totalHours || 0), 0);
+    const hoursThisWeek = attendanceWeek.reduce((sum, record) => sum + (record.totalHours || 0), 0);
 
-    // 3. Pending Payout
+    // 4. Pending Payout
     const payments = await Payment.find({
       userId,
       status: 'PENDING'
@@ -107,6 +162,8 @@ router.get('/dashboard-stats', async (req, res, next) => {
     res.json({
       success: true,
       data: {
+        todayShift,
+        attendanceStatus,
         nextShift: nextShiftRecord ? {
           title: nextShiftRecord.jobId.title,
           startDate: nextShiftRecord.jobId.startDate,
@@ -361,6 +418,24 @@ router.post('/attendance/check-in', validate(schemas.checkIn), async (req, res, 
     }
 
     const job = await Job.findById(jobId);
+    if (!job) return res.status(404).json({ success: false, message: 'Job not found' });
+
+    // Enforce Shift Timing Rules
+    const now = new Date();
+    const [startHour, startMin] = (job.shiftStart || '09:00').split(':').map(Number);
+    const shiftStartTime = new Date(now);
+    shiftStartTime.setHours(startHour, startMin, 0, 0);
+
+    const windowStart = new Date(shiftStartTime.getTime() - 30 * 60000); // 30 mins before
+    const windowEnd = new Date(shiftStartTime.getTime() + 60 * 60000);   // 1 hour after
+
+    if (now < windowStart || now > windowEnd) {
+      return res.status(403).json({ 
+        success: false, 
+        message: `Check-in is only allowed between ${windowStart.toLocaleTimeString()} and ${windowEnd.toLocaleTimeString()}` 
+      });
+    }
+
     const jobLocation = job?.location;
     const radius = jobLocation?.radius || 500;
 
@@ -472,8 +547,23 @@ router.post('/attendance/check-out', validate(schemas.checkOut), async (req, res
       return res.status(400).json({ success: false, message: 'You have not checked in yet' });
     }
 
-    if (attendance.checkOut?.time) {
-      return res.status(400).json({ success: false, message: 'Already checked out today' });
+    const job = await Job.findById(jobId);
+    if (!job) return res.status(404).json({ success: false, message: 'Job not found' });
+
+    // Enforce Shift Timing Rules for Check-out
+    const now = new Date();
+    const [endHour, endMin] = (job.shiftEnd || '17:00').split(':').map(Number);
+    const shiftEndTime = new Date(now);
+    shiftEndTime.setHours(endHour, endMin, 0, 0);
+
+    const windowStart = new Date(shiftEndTime.getTime() - 20 * 60000); // 20 mins before
+    const windowEnd = new Date(shiftEndTime.getTime() + 60 * 60000);   // 1 hour after
+
+    if (now < windowStart || now > windowEnd) {
+      return res.status(403).json({ 
+        success: false, 
+        message: `Check-out is only allowed between ${windowStart.toLocaleTimeString()} and ${windowEnd.toLocaleTimeString()}` 
+      });
     }
 
     const checkOutTime = new Date();
@@ -572,20 +662,34 @@ router.get('/attendance', async (req, res, next) => {
  */
 router.get('/available-jobs', async (req, res, next) => {
   try {
-    // Only show jobs in future or active, not fully staffed (optional logic)
     const jobs = await Job.find({ status: { $in: ['OPEN', 'ACTIVE'] } }).sort({ startDate: 1 });
-    // Maybe also populate whether they applied already
     const myApplications = await JobApplication.find({ userId: req.user._id });
     const appliedJobIds = myApplications.map(app => app.jobId.toString());
 
-    res.json({ 
-      success: true, 
-      data: jobs.map(job => ({
+    // Enrich jobs with worker counts and priority
+    const enrichedJobs = await Promise.all(jobs.map(async (job) => {
+      const confirmedWorkers = await Assignment.countDocuments({ jobId: job._id, status: { $in: ['ACTIVE', 'COMPLETED'] } });
+      const remainingSlots = Math.max(0, (job.requiredWorkers || 1) - confirmedWorkers);
+      
+      return {
         ...job.toObject(),
+        confirmedWorkers,
+        remainingSlots,
         hasApplied: appliedJobIds.includes(job._id.toString()),
         applicationStatus: myApplications.find(a => a.jobId.toString() === job._id.toString())?.status
-      }))
-    });
+      };
+    }));
+
+    // Filter out full jobs and sort by "Need 1 more" priority
+    const availableJobs = enrichedJobs
+      .filter(job => job.remainingSlots > 0)
+      .sort((a, b) => {
+        // Prioritize jobs that are partially filled (fewer remaining slots)
+        if (a.remainingSlots !== b.remainingSlots) return a.remainingSlots - b.remainingSlots;
+        return new Date(a.startDate) - new Date(b.startDate);
+      });
+
+    res.json({ success: true, data: availableJobs });
   } catch (error) {
     next(error);
   }
@@ -604,13 +708,9 @@ router.post('/apply/:jobId', async (req, res, next) => {
   try {
     const { jobId } = req.params;
 
-    if (!req.user.isApproved) {
-      return res.status(403).json({ success: false, message: 'You must be approved to apply for jobs.' });
-    }
-
     const job = await Job.findById(jobId);
-    if (!job || job.status !== 'ACTIVE') {
-      return res.status(404).json({ success: false, message: 'Job not found or not active.' });
+    if (!job || !['OPEN', 'ACTIVE'].includes(job.status)) {
+      return res.status(404).json({ success: false, message: 'Job not found or not open for applications.' });
     }
 
     const existingApp = await JobApplication.findOne({ userId: req.user._id, jobId });

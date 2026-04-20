@@ -112,6 +112,83 @@ router.get('/jobs', async (req, res, next) => {
   }
 });
 
+router.get('/jobs/today', async (req, res, next) => {
+  try {
+    const client = await Client.findOne({ userId: req.user._id });
+    if (!client) {
+      return res.json({ success: true, data: [] });
+    }
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    const jobs = await Job.find({
+      clientId: client._id,
+      startDate: { $lt: tomorrow },
+      endDate: { $gte: today },
+      status: { $in: ['OPEN', 'ACTIVE'] }
+    }).sort({ shiftStart: 1 });
+
+    res.json({ success: true, data: jobs });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get('/jobs/upcoming', async (req, res, next) => {
+  try {
+    const client = await Client.findOne({ userId: req.user._id });
+    if (!client) {
+      return res.json({ success: true, data: [] });
+    }
+
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    tomorrow.setHours(0, 0, 0, 0);
+
+    const jobs = await Job.find({
+      clientId: client._id,
+      startDate: { $gte: tomorrow },
+      status: { $in: ['OPEN', 'PENDING'] }
+    }).sort({ startDate: 1 }).limit(20);
+
+    res.json({ success: true, data: jobs });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get('/jobs/by-date', async (req, res, next) => {
+  try {
+    const client = await Client.findOne({ userId: req.user._id });
+    if (!client) {
+      return res.json({ success: true, data: [] });
+    }
+
+    const { date } = req.query;
+    if (!date) {
+      return res.status(400).json({ success: false, message: 'Date parameter is required (YYYY-MM-DD)' });
+    }
+
+    const targetDate = new Date(date);
+    targetDate.setHours(0, 0, 0, 0);
+    const nextDate = new Date(targetDate);
+    nextDate.setDate(nextDate.getDate() + 1);
+
+    const jobs = await Job.find({
+      clientId: client._id,
+      startDate: { $lt: nextDate },
+      endDate: { $gte: targetDate }
+    }).sort({ shiftStart: 1 });
+
+    res.json({ success: true, data: jobs });
+  } catch (error) {
+    next(error);
+  }
+});
+
 /**
  * @swagger
  * /client/jobs/{id}:
@@ -133,7 +210,10 @@ router.get('/jobs/:id', async (req, res, next) => {
       return res.status(404).json({ success: false, message: 'Job not found' });
     }
 
-    res.json({ success: true, data: job });
+    const assignments = await Assignment.find({ jobId: req.params.id })
+      .populate('userId', 'name email role profile');
+
+    res.json({ success: true, data: { ...job.toObject(), assignments } });
   } catch (error) {
     next(error);
   }
@@ -273,7 +353,14 @@ router.get('/payments', async (req, res, next) => {
       .populate('jobId', 'title')
       .sort({ createdAt: -1 });
 
-    res.json({ success: true, data: payments });
+    // Client only sees status, not the amount
+    const sanitizedPayments = payments.map(p => {
+      const obj = p.toObject();
+      delete obj.amount;
+      return obj;
+    });
+
+    res.json({ success: true, data: sanitizedPayments });
   } catch (error) {
     next(error);
   }
