@@ -8,6 +8,7 @@ import swaggerJsDoc from 'swagger-jsdoc';
 import { securityMiddleware, authLimiter, generalLimiter } from './middlewares/security.js';
 import apiRoutes from './modules/v1.js';
 import { initializeSocket } from './utils/socket.js';
+import { autoSeed } from './config/autoSeed.js';
 
 dotenv.config();
 
@@ -119,6 +120,7 @@ const PORT = process.env.PORT || 5000;
 
 const startServer = async () => {
   await connectDB();
+  await autoSeed();
   httpServer.listen(PORT, '0.0.0.0', () => {
     console.log(`[${process.env.NODE_ENV || 'development'}] Server running on port ${PORT}`);
     console.log(`API Base: http://localhost:${PORT}/api/v1`);

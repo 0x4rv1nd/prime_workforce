@@ -37,9 +37,11 @@ const router = Router();
  *       400:
  *         description: Validation error or email already exists
  */
+import { Client } from '../../models/Client.js';
+
 router.post('/register', validate(schemas.register), async (req, res, next) => {
   try {
-    const { name, email, password } = req.body;
+    const { name, email, password, role = 'PROMOTER', companyName } = req.body;
 
     const existingUser = await User.findOne({ email: email.toLowerCase() });
     if (existingUser) {
@@ -48,13 +50,26 @@ router.post('/register', validate(schemas.register), async (req, res, next) => {
 
     const hashedPassword = await hashPassword(password);
 
+    // Only allow self-registration for PROMOTER and CLIENT roles
+    const allowedRoles = ['PROMOTER', 'CLIENT'];
+    const finalRole = allowedRoles.includes(role.toUpperCase()) ? role.toUpperCase() : 'PROMOTER';
+
     const user = await User.create({
       name,
       email: email.toLowerCase(),
       password: hashedPassword,
-      role: 'PROMOTER',
-      isApproved: true
+      role: finalRole,
+      isApproved: true // Auto-approving for demo/development
     });
+
+    // If registering as a CLIENT, create the Client model entry
+    if (finalRole === 'CLIENT') {
+      await Client.create({
+        userId: user._id,
+        companyName: companyName || `${name}'s Company`,
+        contactEmail: email.toLowerCase()
+      });
+    }
 
     await ActivityLog.create({
       userId: user._id,
@@ -81,6 +96,7 @@ router.post('/register', validate(schemas.register), async (req, res, next) => {
     next(error);
   }
 });
+
 
 /**
  * @swagger

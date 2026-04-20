@@ -12,15 +12,6 @@ const router = Router();
 
 router.use(auth, authorize('CLIENT'));
 
-/**
- * @swagger
- * /client/profile:
- *   get:
- *     summary: Get client profile
- *     tags: [Client - Profile]
- *     security:
- *       - bearerAuth: []
- */
 router.get('/profile', async (req, res, next) => {
   try {
     const client = await Client.findOne({ userId: req.user._id }).populate('userId', 'name email phone');
@@ -32,6 +23,49 @@ router.get('/profile', async (req, res, next) => {
     next(error);
   }
 });
+
+/**
+ * @swagger
+ * /client/profile:
+ *   patch:
+ *     summary: Update client profile
+ *     tags: [Client - Profile]
+ *     security:
+ *       - bearerAuth: []
+ */
+router.patch('/profile', async (req, res, next) => {
+  try {
+    const { name, phone, companyName, industry, companyAddress } = req.body;
+    
+    // Update User model fields
+    if (name || phone) {
+      const updateData = {};
+      if (name) updateData.name = name;
+      if (phone) updateData.phone = phone;
+      await req.user.constructor.findByIdAndUpdate(req.user._id, updateData);
+    }
+
+    // Update Client model fields
+    const client = await Client.findOne({ userId: req.user._id });
+    if (client) {
+      if (companyName) client.companyName = companyName;
+      if (industry) client.industry = industry;
+      if (companyAddress) client.companyAddress = { ...client.companyAddress, ...companyAddress };
+      await client.save();
+    }
+
+    const updatedClient = await Client.findOne({ userId: req.user._id }).populate('userId', 'name email phone');
+    
+    res.json({ 
+      success: true, 
+      message: 'Profile updated successfully',
+      data: updatedClient 
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 
 /**
  * @swagger
