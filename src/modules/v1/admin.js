@@ -940,4 +940,201 @@ router.get('/reports/monthly', async (req, res, next) => {
   }
 });
 
+// ============ JOB APPLICATIONS ============
+
+import { JobApplication } from '../../models/JobApplication.js';
+
+/**
+ * @swagger
+ * /admin/applications:
+ *   get:
+ *     summary: Get all job applications
+ *     tags: [Admin - Applications]
+ *     security:
+ *       - bearerAuth: []
+ */
+router.get('/applications', async (req, res, next) => {
+  try {
+    const filter = {};
+    if (req.query.jobId) {
+      filter.jobId = req.query.jobId;
+    }
+    const applications = await JobApplication.find(filter)
+      .populate('userId', 'name email phone')
+      .populate('jobId', 'title')
+      .sort({ appliedAt: -1 });
+
+    res.json({ success: true, data: applications });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * @swagger
+ * /admin/applications/{id}/approve:
+ *   patch:
+ *     summary: Approve a job application and create assignment
+ *     tags: [Admin - Applications]
+ *     security:
+ *       - bearerAuth: []
+ */
+router.patch('/applications/:id/approve', async (req, res, next) => {
+  try {
+    const application = await JobApplication.findById(req.params.id);
+    if (!application) {
+      return res.status(404).json({ success: false, message: 'Application not found' });
+    }
+
+    application.status = 'APPROVED';
+    await application.save();
+
+    // Create Assignment
+    const assignment = await Assignment.create({
+      userId: application.userId,
+      jobId: application.jobId,
+      assignedBy: req.user._id,
+      status: 'PENDING'
+    });
+
+    res.json({ success: true, message: 'Application approved and assignment created', data: { application, assignment } });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * @swagger
+ * /admin/applications/{id}/reject:
+ *   patch:
+ *     summary: Reject a job application
+ *     tags: [Admin - Applications]
+ *     security:
+ *       - bearerAuth: []
+ */
+router.patch('/applications/:id/reject', async (req, res, next) => {
+  try {
+    const application = await JobApplication.findById(req.params.id);
+    if (!application) {
+      return res.status(404).json({ success: false, message: 'Application not found' });
+    }
+
+    application.status = 'REJECTED';
+    await application.save();
+
+    res.json({ success: true, message: 'Application rejected', data: application });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ============ PAYMENTS ============
+
+import { Payment } from '../../models/Payment.js';
+
+/**
+ * @swagger
+ * /admin/payments/generate:
+ *   post:
+ *     summary: Generate payments for completed attendance
+ *     tags: [Admin - Payments]
+ *     security:
+ *       - bearerAuth: []
+ */
+router.post('/payments/generate', async (req, res, next) => {
+  try {
+    const { jobId } = req.body;
+    
+    // Find all attendance records for this job that don't have a payment yet
+    // Or just all attendance with totalHours > 0
+    // Simplify for now: generate payment by looking at attendance
+    const attendances = await Attendance.find({ jobId, totalHours: { $gt: 0 } });
+    const job = await Job.findById(jobId);
+
+    if (!job) {
+      return res.status(404).json({ success: false, message: 'Job not found' });
+    }
+
+    const wagePerHour = job.wage || 0; // assuming job.wage is per hour
+    const paymentsGenerated = [];
+
+    for (const record of attendances) {
+      // Check if a payment for this attendance/job combination exists? In instructions, Payment has jobId and userId. Let's just create one if none exists for this specific combination.
+      // Usually would link to attendanceId. The Prompt dictates fields: userId, jobId, totalHours, amount, status.
+      // We will aggregate by user for the job, or just map attendance to a payment. 
+      // Let's aggregate by user for this job.
+      
+      const existingPayment = await Payment.findOne({ userId: record.userId, jobId });
+      if (!existingPayment) {
+        // Aggregate all hours for this user in this job
+        const userAttendances = attendances.filter(a => a.userId.toString() === record.userId.toString());
+        const totalHours = userAttendances.reduce((sum, a) => sum + (a.totalHours || 0), 0);
+        const amount = totalHours * wagePerHour;
+
+        const newPayment = await Payment.create({
+          userId: record.userId,
+          jobId,
+          totalHours,
+          amount,
+          status: 'PENDING'
+        });
+        paymentsGenerated.push(newPayment);
+      }
+    }
+
+    res.status(201).json({ success: true, message: `Generated ${paymentsGenerated.length} new payments`, data: paymentsGenerated });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * @swagger
+ * /admin/payments/{id}:
+ *   patch:
+ *     summary: Update payment status
+ *     tags: [Admin - Payments]
+ *     security:
+ *       - bearerAuth: []
+ */
+router.patch('/payments/:id', async (req, res, next) => {
+  try {
+    const { status } = req.body; // PENDING, PAID, ON_HOLD
+    const payment = await Payment.findByIdAndUpdate(req.params.id, { status }, { new: true });
+    
+    if (!payment) return res.status(404).json({ success: false, message: 'Payment not found' });
+
+    res.json({ success: true, message: 'Payment updated', data: payment });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * @swagger
+ * /admin/payments:
+ *   get:
+ *     summary: Get all payments
+ *     tags: [Admin - Payments]
+ *     security:
+ *       - bearerAuth: []
+ */
+router.get('/payments', async (req, res, next) => {
+  try {
+    const { status, jobId } = req.query;
+    const filter = {};
+    if (status) filter.status = status;
+    if (jobId) filter.jobId = jobId;
+
+    const payments = await Payment.find(filter)
+      .populate('userId', 'name email phone')
+      .populate('jobId', 'title')
+      .sort({ createdAt: -1 });
+
+    res.json({ success: true, data: payments });
+  } catch (error) {
+    next(error);
+  }
+});
+
 export default router;

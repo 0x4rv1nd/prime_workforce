@@ -10,32 +10,25 @@ const paymentSchema = new mongoose.Schema({
   jobId: { 
     type: mongoose.Schema.Types.ObjectId, 
     ref: 'Job',
+    required: true,
     index: true 
   },
-  attendanceId: { 
-    type: mongoose.Schema.Types.ObjectId, 
-    ref: 'Attendance' 
+  totalHours: { 
+    type: Number, 
+    required: true, 
+    min: 0 
   },
-  amount: { type: Number, required: true, min: 0 },
-  currency: { type: String, default: 'USD' },
-  type: { 
-    type: String, 
-    enum: ['WAGE', 'BONUS', 'DEDUCTION', 'ADVANCE'], 
-    required: true 
+  amount: { 
+    type: Number, 
+    required: true, 
+    min: 0 
   },
   status: { 
     type: String, 
-    enum: ['PENDING', 'PROCESSING', 'COMPLETED', 'FAILED', 'CANCELLED'], 
+    enum: ['PENDING', 'PAID', 'ON_HOLD'], 
     default: 'PENDING',
     index: true 
   },
-  method: { 
-    type: String, 
-    enum: ['BANK_TRANSFER', 'CASH', 'CHECK', 'MOBILE_MONEY'] 
-  },
-  reference: { type: String, unique: true, sparse: true },
-  description: { type: String },
-  processedAt: { type: Date },
   createdAt: { type: Date, default: Date.now, index: true },
   updatedAt: { type: Date, default: Date.now }
 }, {

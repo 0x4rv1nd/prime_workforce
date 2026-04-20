@@ -496,4 +496,104 @@ router.get('/attendance', async (req, res, next) => {
   }
 });
 
+// ============ JOB APPLICATIONS ============
+
+import { JobApplication } from '../../models/JobApplication.js';
+
+/**
+ * @swagger
+ * /promoter/available-jobs:
+ *   get:
+ *     summary: Get available jobs
+ *     tags: [Worker - Jobs]
+ *     security:
+ *       - bearerAuth: []
+ */
+router.get('/available-jobs', async (req, res, next) => {
+  try {
+    // Only show jobs in future or active, not fully staffed (optional logic)
+    const jobs = await Job.find({ status: 'ACTIVE' }).sort({ startDate: 1 });
+    // Maybe also populate whether they applied already
+    const myApplications = await JobApplication.find({ userId: req.user._id });
+    const appliedJobIds = myApplications.map(app => app.jobId.toString());
+
+    res.json({ 
+      success: true, 
+      data: jobs.map(job => ({
+        ...job.toObject(),
+        hasApplied: appliedJobIds.includes(job._id.toString()),
+        applicationStatus: myApplications.find(a => a.jobId.toString() === job._id.toString())?.status
+      }))
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * @swagger
+ * /promoter/apply/:jobId:
+ *   post:
+ *     summary: Apply for a job
+ *     tags: [Worker - Jobs]
+ *     security:
+ *       - bearerAuth: []
+ */
+router.post('/apply/:jobId', async (req, res, next) => {
+  try {
+    const { jobId } = req.params;
+
+    if (!req.user.isApproved) {
+      return res.status(403).json({ success: false, message: 'You must be approved to apply for jobs.' });
+    }
+
+    const job = await Job.findById(jobId);
+    if (!job || job.status !== 'ACTIVE') {
+      return res.status(404).json({ success: false, message: 'Job not found or not active.' });
+    }
+
+    const existingApp = await JobApplication.findOne({ userId: req.user._id, jobId });
+    if (existingApp) {
+      return res.status(400).json({ success: false, message: 'You have already applied for this job.' });
+    }
+
+    const application = await JobApplication.create({
+      userId: req.user._id,
+      jobId
+    });
+
+    res.status(201).json({ success: true, message: 'Successfully applied for job', data: application });
+  } catch (error) {
+    if (error.code === 11000) {
+      return res.status(400).json({ success: false, message: 'You have already applied for this job.' });
+    }
+    next(error);
+  }
+});
+
+// ============ EARNINGS ============
+
+import { Payment } from '../../models/Payment.js';
+
+/**
+ * @swagger
+ * /promoter/earnings:
+ *   get:
+ *     summary: Get worker earnings/payments
+ *     tags: [Worker - Payments]
+ *     security:
+ *       - bearerAuth: []
+ */
+router.get('/earnings', async (req, res, next) => {
+  try {
+    const payments = await Payment.find({ userId: req.user._id })
+      .populate('jobId', 'title')
+      .sort({ createdAt: -1 });
+    
+    res.json({ success: true, data: payments });
+  } catch (error) {
+    next(error);
+  }
+});
+
 export default router;
