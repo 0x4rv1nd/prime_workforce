@@ -33,6 +33,8 @@ const attendanceSchema = new mongoose.Schema({
     },
     verified: { type: Boolean, default: false },
     notes: { type: String },
+    photo: { type: String },
+    imageUrl: { type: String },
     status: { type: String, enum: ['ON_TIME', 'LATE', 'VERY_LATE'], default: 'ON_TIME' }
   },
   checkOut: {
@@ -44,6 +46,8 @@ const attendanceSchema = new mongoose.Schema({
     },
     verified: { type: Boolean, default: false },
     notes: { type: String },
+    photo: { type: String },
+    imageUrl: { type: String },
     status: { type: String, enum: ['ON_TIME', 'EARLY_LEAVE', 'OVERTIME'], default: 'ON_TIME' }
   },
   totalHours: { type: Number, default: 0 },
@@ -55,7 +59,9 @@ const attendanceSchema = new mongoose.Schema({
   },
   overtime: { type: Number, default: 0 },
   breakDuration: { type: Number, default: 0 },
-  isAutoCheckout: { type: Boolean, default: false }
+  isAutoCheckout: { type: Boolean, default: false },
+  geoValidationPassed: { type: Boolean, default: false },
+  geoValidationMessage: { type: String }
 }, {
   timestamps: true
 });

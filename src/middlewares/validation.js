@@ -145,15 +145,18 @@ export const schemas = {
       lat: z.number(),
       lng: z.number(),
       address: z.string().optional()
-    })
+    }),
+    photo: z.string().optional()
   }),
 
   checkOut: z.object({
+    jobId: z.string(),
     location: z.object({
       lat: z.number(),
       lng: z.number(),
       address: z.string().optional()
-    })
+    }),
+    photo: z.string().optional()
   }),
 
   createAdmin: z.object({

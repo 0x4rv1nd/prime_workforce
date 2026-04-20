@@ -35,8 +35,10 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
-app.use(express.json({ limit: '10kb' }));
-app.use(express.urlencoded({ extended: true, limit: '10kb' }));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+app.use('/uploads', express.static('uploads'));
 
 const logger = (req, res, next) => {
   const timestamp = new Date().toISOString();

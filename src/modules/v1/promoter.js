@@ -8,6 +8,12 @@ import { Payment } from '../../models/Payment.js';
 import { auth, authorize } from '../../middlewares/auth.js';
 import { ActivityLog } from '../../models/ActivityLog.js';
 import { validate, schemas } from '../../middlewares/validation.js';
+import path from 'path';
+import fs from 'fs';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const router = Router();
 
@@ -29,6 +35,31 @@ const isWithinGeofence = (userLat, userLng, jobLocation, radius = 500) => {
   if (!jobLocation || !jobLocation.lat || !jobLocation.lng) return true;
   const distance = calculateDistance(userLat, userLng, jobLocation.lat, jobLocation.lng);
   return distance <= radius;
+};
+
+const saveBase64Image = (base64String, prefix = 'img') => {
+  if (!base64String || !base64String.startsWith('data:image')) {
+    return null;
+  }
+  
+  const matches = base64String.match(/^data:image\/(\w+);base64,(.+)$/);
+  if (!matches) return null;
+  
+  const ext = matches[1] === 'jpeg' ? 'jpg' : matches[1];
+  const data = matches[2];
+  const buffer = Buffer.from(data, 'base64');
+  
+  const filename = `${prefix}_${Date.now()}_${Math.random().toString(36).substring(7)}.${ext}`;
+  const uploadsDir = path.join(process.cwd(), 'uploads');
+  
+  if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+  }
+  
+  const filepath = path.join(uploadsDir, filename);
+  fs.writeFileSync(filepath, buffer);
+  
+  return `/uploads/${filename}`;
 };
 
 /**
@@ -400,7 +431,7 @@ router.get('/jobs/:id', async (req, res, next) => {
  */
 router.post('/attendance/check-in', validate(schemas.checkIn), async (req, res, next) => {
   try {
-    const { jobId, location } = req.body;
+    const { jobId, location, photo } = req.body;
     const userId = req.user._id;
 
     if (!req.user.isApproved) {
@@ -438,19 +469,22 @@ router.post('/attendance/check-in', validate(schemas.checkIn), async (req, res, 
 
     const jobLocation = job?.location;
     const radius = jobLocation?.radius || 500;
+    const isWithinRadius = isWithinGeofence(location.lat, location.lng, jobLocation, radius);
 
-    if (!isWithinGeofence(location.lat, location.lng, jobLocation, radius)) {
+    if (!isWithinRadius) {
       await ActivityLog.create({
         userId,
         action: 'CHECK_IN_REJECTED_GEOFENCE',
-        details: { jobId, userLat: location.lat, userLng: location.lng }
+        details: { jobId, userLat: location.lat, userLng: location.lng, requiredRadius: radius }
       });
       return res.status(403).json({ 
         success: false, 
         message: `You must be within ${radius} meters of the job location`,
-        data: { requiredRadius: radius }
+        data: { requiredRadius: radius, userDistance: calculateDistance(location.lat, location.lng, jobLocation?.lat, jobLocation?.lng) }
       });
     }
+
+    const imageUrl = saveBase64Image(photo, 'checkin');
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -470,8 +504,10 @@ router.post('/attendance/check-in', validate(schemas.checkIn), async (req, res, 
       attendance = await Attendance.findByIdAndUpdate(
         existingAttendance._id,
         {
-          checkIn: { time: new Date(), location, verified: true },
-          status: 'PRESENT'
+          checkIn: { time: new Date(), location, verified: true, photo, imageUrl },
+          status: 'PRESENT',
+          geoValidationPassed: true,
+          geoValidationMessage: 'Check-in within geofence'
         },
         { new: true }
       );
@@ -481,8 +517,10 @@ router.post('/attendance/check-in', validate(schemas.checkIn), async (req, res, 
         jobId,
         assignmentId: assignment._id,
         date: today,
-        checkIn: { time: new Date(), location, verified: true },
-        status: 'PRESENT'
+        checkIn: { time: new Date(), location, verified: true, photo, imageUrl },
+        status: 'PRESENT',
+        geoValidationPassed: true,
+        geoValidationMessage: 'Check-in within geofence'
       });
     }
 
@@ -531,7 +569,7 @@ router.post('/attendance/check-in', validate(schemas.checkIn), async (req, res, 
  */
 router.post('/attendance/check-out', validate(schemas.checkOut), async (req, res, next) => {
   try {
-    const { jobId, location } = req.body;
+    const { jobId, location, photo } = req.body;
     const userId = req.user._id;
 
     const today = new Date();
@@ -570,11 +608,12 @@ router.post('/attendance/check-out', validate(schemas.checkOut), async (req, res
     const checkInTime = new Date(attendance.checkIn.time);
     const totalMs = checkOutTime - checkInTime;
     const totalHours = Math.round((totalMs / (1000 * 60 * 60)) * 100) / 100;
+    const checkoutImageUrl = saveBase64Image(photo, 'checkout');
 
     const updatedAttendance = await Attendance.findByIdAndUpdate(
       attendance._id,
       {
-        checkOut: { time: checkOutTime, location },
+        checkOut: { time: checkOutTime, location, photo, imageUrl: checkoutImageUrl },
         totalHours,
         status: 'PRESENT'
       },
