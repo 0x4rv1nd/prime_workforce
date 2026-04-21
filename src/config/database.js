@@ -1,6 +1,5 @@
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
-import { MongoMemoryServer } from 'mongodb-memory-server';
 
 dotenv.config();
 
@@ -14,11 +13,10 @@ const connectDB = async () => {
     
     console.log('Attempting to connect to MongoDB...');
     
-    // Attempt local/remote connection
     try {
       const conn = await mongoose.connect(mongoUri, {
         serverSelectionTimeoutMS: 10000,
-        family: 4 // Force IPv4
+        family: 4
       });
       console.log(`✅ MongoDB Connected: ${conn.connection.host}`);
       return conn;
@@ -27,6 +25,7 @@ const connectDB = async () => {
       
       if (process.env.NODE_ENV === 'development') {
         console.log('⚠️ Primary connection failed. Starting In-Memory MongoDB fallback...');
+        const { MongoMemoryServer } = await import('mongodb-memory-server');
         const mongoServer = await MongoMemoryServer.create();
         const memoryUri = mongoServer.getUri();
         const conn = await mongoose.connect(memoryUri);
