@@ -5,9 +5,11 @@ import { Attendance } from '../../models/Attendance.js';
 import { Availability } from '../../models/Availability.js';
 import { JobApplication } from '../../models/JobApplication.js';
 import { Payment } from '../../models/Payment.js';
+import { User } from '../../models/User.js';
 import { auth, authorize } from '../../middlewares/auth.js';
 import { ActivityLog } from '../../models/ActivityLog.js';
 import { validate, schemas } from '../../middlewares/validation.js';
+import { getSocketManager } from '../../utils/socket.js';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
@@ -761,6 +763,30 @@ router.post('/apply/:jobId', async (req, res, next) => {
       userId: req.user._id,
       jobId
     });
+
+    const socketManager = getSocketManager();
+    if (socketManager) {
+      const user = await User.findById(req.user._id).select('name');
+      const notificationData = {
+        type: 'JOB_APPLICATION',
+        jobId: job._id,
+        jobTitle: job.title,
+        applicantName: user?.name || 'Unknown',
+        applicantId: req.user._id,
+        timestamp: new Date().toISOString()
+      };
+
+      socketManager.emitToRole('ADMIN', 'job:application', notificationData);
+      socketManager.emitToRole('SUPER_ADMIN', 'job:application', notificationData);
+      
+      await socketManager.sendNotification(
+        job.clientId,
+        'New Application',
+        `${user?.name || 'A worker'} has applied for ${job.title}`,
+        'JOB',
+        notificationData
+      );
+    }
 
     res.status(201).json({ success: true, message: 'Successfully applied for job', data: application });
   } catch (error) {
