@@ -4,6 +4,7 @@ import { Client } from '../../models/Client.js';
 import { Job } from '../../models/Job.js';
 import { Assignment } from '../../models/Assignment.js';
 import { Attendance } from '../../models/Attendance.js';
+import { Notification } from '../../models/Notification.js';
 import { hashPassword, comparePassword } from '../../utils/auth.js';
 import { auth, authorize } from '../../middlewares/auth.js';
 import { ActivityLog } from '../../models/ActivityLog.js';
@@ -486,6 +487,7 @@ router.post('/clients', validate(schemas.createClient), async (req, res, next) =
       contactEmail: email.toLowerCase(),
       contactPhone,
       companyAddress,
+      isVerified: true,
       industry
     });
 
@@ -523,12 +525,15 @@ router.post('/clients', validate(schemas.createClient), async (req, res, next) =
  */
 router.get('/clients', async (req, res, next) => {
   try {
-    const { page = 1, limit = 20 } = req.query;
+    const { page = 1, limit = 20, isVerified } = req.query;
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
     const filter = {};
     if (req.user.role === 'ADMIN') {
       filter.assignedAdminId = req.user._id;
+    }
+    if (isVerified !== undefined) {
+      filter.isVerified = isVerified === 'true';
     }
 
     const clients = await Client.find(filter)
@@ -575,6 +580,52 @@ router.get('/clients/:id', async (req, res, next) => {
     }
 
     res.json({ success: true, data: client });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.patch('/clients/:id/verify', async (req, res, next) => {
+  try {
+    const client = await Client.findById(req.params.id);
+    if (!client) {
+      return res.status(404).json({ success: false, message: 'Client not found' });
+    }
+
+    client.isVerified = true;
+    await client.save();
+
+    await Notification.create({
+      userId: client.userId,
+      title: 'Profile Verified',
+      message: 'Your client profile has been verified. You now have full access.',
+      type: 'SYSTEM'
+    });
+
+    res.json({ success: true, message: 'Client verified', data: { id: client._id, isVerified: client.isVerified } });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.patch('/clients/:id/unverify', async (req, res, next) => {
+  try {
+    const client = await Client.findById(req.params.id);
+    if (!client) {
+      return res.status(404).json({ success: false, message: 'Client not found' });
+    }
+
+    client.isVerified = false;
+    await client.save();
+
+    await Notification.create({
+      userId: client.userId,
+      title: 'Profile Unverified',
+      message: 'Your client profile has been unverified. Access restricted.',
+      type: 'SYSTEM'
+    });
+
+    res.json({ success: true, message: 'Client unverified', data: { id: client._id, isVerified: client.isVerified } });
   } catch (error) {
     next(error);
   }

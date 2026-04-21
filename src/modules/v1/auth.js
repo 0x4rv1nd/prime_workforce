@@ -1,5 +1,7 @@
 import { Router } from 'express';
 import { User } from '../../models/User.js';
+import { Client } from '../../models/Client.js';
+import { Notification } from '../../models/Notification.js';
 import { hashPassword, comparePassword, generateToken } from '../../utils/auth.js';
 import { auth, authorize } from '../../middlewares/auth.js';
 import { ActivityLog } from '../../models/ActivityLog.js';
@@ -13,7 +15,7 @@ const router = Router();
  *   post:
  *     summary: Register a new promoter (Public)
  *     tags: [Auth]
- *     description: Workers can self-register. They need admin approval to login.
+ *     description: Workers can self-register. Account requires admin approval before login.
  *     requestBody:
  *       required: true
  *       content:
@@ -37,7 +39,6 @@ const router = Router();
  *       400:
  *         description: Validation error or email already exists
  */
-import { Client } from '../../models/Client.js';
 
 router.post('/register', validate(schemas.register), async (req, res, next) => {
   try {
@@ -59,16 +60,25 @@ router.post('/register', validate(schemas.register), async (req, res, next) => {
       email: email.toLowerCase(),
       password: hashedPassword,
       role: finalRole,
-      isApproved: true // Auto-approving for demo/development
+      isApproved: true
     });
 
-    // If registering as a CLIENT, create the Client model entry
     if (finalRole === 'CLIENT') {
       await Client.create({
         userId: user._id,
         companyName: companyName || `${name}'s Company`,
-        contactEmail: email.toLowerCase()
+        contactEmail: email.toLowerCase(),
+        isVerified: false
       });
+
+      const admins = await User.find({ role: { $in: ['ADMIN', 'SUPER_ADMIN'] } });
+      await Notification.insertMany(admins.map(admin => ({
+        userId: admin._id,
+        title: 'New Client Registration',
+        message: `${name} has registered as a client. Verification required.`,
+        type: 'CLIENT_VERIFICATION',
+        data: { clientUserId: user._id, companyName: companyName || `${name}'s Company` }
+      })));
     }
 
     await ActivityLog.create({

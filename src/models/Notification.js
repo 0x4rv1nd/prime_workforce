@@ -11,7 +11,7 @@ const notificationSchema = new mongoose.Schema({
   message: { type: String, required: true, maxlength: 1000 },
   type: { 
     type: String, 
-    enum: ['CHECK_IN', 'CHECK_OUT', 'ASSIGNMENT', 'JOB', 'SYSTEM'], 
+    enum: ['CHECK_IN', 'CHECK_OUT', 'ASSIGNMENT', 'JOB', 'SYSTEM', 'CLIENT_VERIFICATION'], 
     default: 'SYSTEM',
     index: true 
   },

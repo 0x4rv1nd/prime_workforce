@@ -23,6 +23,7 @@ const clientSchema = new mongoose.Schema({
     country: String
   },
   industry: { type: String, trim: true },
+  isVerified: { type: Boolean, default: false, index: true },
   isDeleted: { type: Boolean, default: false, index: true },
   deletedAt: { type: Date },
   createdAt: { type: Date, default: Date.now, index: true },

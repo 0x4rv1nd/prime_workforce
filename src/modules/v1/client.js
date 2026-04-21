@@ -12,13 +12,21 @@ const router = Router();
 
 router.use(auth, authorize('CLIENT'));
 
+const requireClientVerified = async (req, res, next) => {
+  const client = await Client.findOne({ userId: req.user._id });
+  if (!client || !client.isVerified) {
+    return res.status(403).json({ success: false, message: 'Profile pending verification' });
+  }
+  next();
+};
+
 router.get('/profile', async (req, res, next) => {
   try {
     const client = await Client.findOne({ userId: req.user._id }).populate('userId', 'name email phone');
     if (!client) {
       return res.status(404).json({ success: false, message: 'Client profile not found' });
     }
-    res.json({ success: true, data: client });
+    res.json({ success: true, data: { ...client.toObject(), verificationPending: !client.isVerified } });
   } catch (error) {
     next(error);
   }
@@ -76,7 +84,7 @@ router.patch('/profile', async (req, res, next) => {
  *     security:
  *       - bearerAuth: []
  */
-router.get('/jobs', async (req, res, next) => {
+router.get('/jobs', requireClientVerified, async (req, res, next) => {
   try {
     const client = await Client.findOne({ userId: req.user._id });
     if (!client) {
@@ -112,7 +120,7 @@ router.get('/jobs', async (req, res, next) => {
   }
 });
 
-router.get('/jobs/today', async (req, res, next) => {
+router.get('/jobs/today', requireClientVerified, async (req, res, next) => {
   try {
     const client = await Client.findOne({ userId: req.user._id });
     if (!client) {
@@ -137,7 +145,7 @@ router.get('/jobs/today', async (req, res, next) => {
   }
 });
 
-router.get('/jobs/upcoming', async (req, res, next) => {
+router.get('/jobs/upcoming', requireClientVerified, async (req, res, next) => {
   try {
     const client = await Client.findOne({ userId: req.user._id });
     if (!client) {
@@ -160,7 +168,7 @@ router.get('/jobs/upcoming', async (req, res, next) => {
   }
 });
 
-router.get('/jobs/by-date', async (req, res, next) => {
+router.get('/jobs/by-date', requireClientVerified, async (req, res, next) => {
   try {
     const client = await Client.findOne({ userId: req.user._id });
     if (!client) {
@@ -198,7 +206,7 @@ router.get('/jobs/by-date', async (req, res, next) => {
  *     security:
  *       - bearerAuth: []
  */
-router.get('/jobs/:id', async (req, res, next) => {
+router.get('/jobs/:id', requireClientVerified, async (req, res, next) => {
   try {
     const client = await Client.findOne({ userId: req.user._id });
     if (!client) {
@@ -228,7 +236,7 @@ router.get('/jobs/:id', async (req, res, next) => {
  *     security:
  *       - bearerAuth: []
  */
-router.get('/promoters', async (req, res, next) => {
+router.get('/promoters', requireClientVerified, async (req, res, next) => {
   try {
     const client = await Client.findOne({ userId: req.user._id });
     if (!client) {
@@ -264,7 +272,7 @@ router.get('/promoters', async (req, res, next) => {
  *     security:
  *       - bearerAuth: []
  */
-router.get('/attendance', async (req, res, next) => {
+router.get('/attendance', requireClientVerified, async (req, res, next) => {
   try {
     const client = await Client.findOne({ userId: req.user._id });
     if (!client) {
@@ -305,7 +313,7 @@ router.get('/attendance', async (req, res, next) => {
  *     security:
  *       - bearerAuth: []
  */
-router.get('/attendance/:userId', async (req, res, next) => {
+router.get('/attendance/:userId', requireClientVerified, async (req, res, next) => {
   try {
     const client = await Client.findOne({ userId: req.user._id });
     if (!client) {
@@ -338,7 +346,7 @@ router.get('/attendance/:userId', async (req, res, next) => {
  *     security:
  *       - bearerAuth: []
  */
-router.get('/payments', async (req, res, next) => {
+router.get('/payments', requireClientVerified, async (req, res, next) => {
   try {
     const client = await Client.findOne({ userId: req.user._id });
     if (!client) {

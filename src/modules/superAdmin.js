@@ -1000,4 +1000,125 @@ router.get('/dashboard', auth, authorize('SUPER_ADMIN'), async (req, res, next) 
   }
 });
 
+/**
+ * @swagger
+ * /super-admin/audit-logs:
+ *   get:
+ *     summary: Get audit logs
+ *     tags: [Super Admin - Audit Logs]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 20
+ *       - in: query
+ *         name: action
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: userId
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: startDate
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: endDate
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Audit logs
+ */
+router.get('/audit-logs', auth, authorize('SUPER_ADMIN'), async (req, res, next) => {
+  try {
+    const { page = 1, limit = 20, action, userId, startDate, endDate } = req.query;
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    const filter: any = {};
+    if (action) filter.action = action;
+    if (userId) filter.userId = userId;
+    if (startDate || endDate) {
+      filter.timestamp = {};
+      if (startDate) filter.timestamp.$gte = new Date(startDate);
+      if (endDate) filter.timestamp.$lte = new Date(endDate);
+    }
+
+    const [logs, total] = await Promise.all([
+      ActivityLog.find(filter)
+        .populate('userId', 'name email role')
+        .sort({ timestamp: -1 })
+        .skip(skip)
+        .limit(parseInt(limit)),
+      ActivityLog.countDocuments(filter)
+    ]);
+
+    res.json({
+      success: true,
+      data: logs,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total,
+        pages: Math.ceil(total / parseInt(limit))
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * @swagger
+ * /super-admin/audit-logs/stats:
+ *   get:
+ *     summary: Get audit logs statistics
+ *     tags: [Super Admin - Audit Logs]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Audit logs stats
+ */
+router.get('/audit-logs/stats', auth, authorize('SUPER_ADMIN'), async (req, res, next) => {
+  try {
+    const [totalLogs, actionCounts, recentUsers] = await Promise.all([
+      ActivityLog.countDocuments(),
+      ActivityLog.aggregate([
+        { $group: { _id: '$action', count: { $sum: 1 } } },
+        { $sort: { count: -1 } },
+        { $limit: 10 }
+      ]),
+      ActivityLog.aggregate([
+        { $sort: { timestamp: -1 } },
+        { $group: { _id: '$userId', lastAction: { $first: '$timestamp' } } },
+        { $limit: 5 }
+      ])
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        totalLogs,
+        actionCounts: actionCounts.reduce((acc: any, item: any) => {
+          acc[item._id] = item.count;
+          return acc;
+        }, {}),
+        recentUsers
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 export default router;

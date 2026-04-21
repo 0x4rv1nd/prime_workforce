@@ -41,8 +41,16 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use('/uploads', express.static('uploads'));
 
 const logger = (req, res, next) => {
-  const timestamp = new Date().toISOString();
-  console.log(`[${timestamp}] ${req.method} ${req.path}`);
+  const start = Date.now();
+  res.on('finish', () => {
+    const duration = Date.now() - start;
+    const timestamp = new Date().toISOString();
+    const method = req.method.padEnd(6);
+    const path = req.path;
+    const status = res.statusCode.toString().padStart(3);
+    const statusColor = res.statusCode >= 400 ? '\x1b[31m' : res.statusCode >= 300 ? '\x1b[33m' : '\x1b[32m';
+    console.log(`\x1b[36m[${timestamp}]\x1b[0m ${method} ${path} ${statusColor}${status}\x1b[0m ${duration}ms`);
+  });
   next();
 };
 app.use(logger);
