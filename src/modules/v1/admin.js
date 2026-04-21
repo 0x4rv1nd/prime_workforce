@@ -287,6 +287,38 @@ router.patch('/users/:id/reject', async (req, res, next) => {
   }
 });
 
+router.patch('/users/:id', async (req, res, next) => {
+  try {
+    const user = await User.findById(req.params.id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    const { name, role, isApproved } = req.body;
+
+    if (name) user.name = name;
+    if (role) user.role = role;
+    if (isApproved !== undefined) user.isApproved = isApproved;
+
+    await user.save();
+
+    await ActivityLog.create({
+      userId: req.user._id,
+      action: 'USER_UPDATED',
+      entityType: 'User',
+      entityId: user._id
+    });
+
+    res.json({
+      success: true,
+      message: 'User updated successfully',
+      data: { id: user._id, name: user.name, role: user.role, isApproved: user.isApproved }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 /**
  * @swagger
  * /admin/users/{id}:
